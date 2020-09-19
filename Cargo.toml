@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "reflow",
+    "reflow-cli",
+]
+default-members = [
+    "reflow",
+    "reflow-cli",
+]
