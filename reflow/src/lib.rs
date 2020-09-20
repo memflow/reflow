@@ -1,6 +1,7 @@
 use log::{debug, info};
 
 use std::cell::RefCell;
+use std::mem::size_of;
 use std::sync::Arc;
 
 use memflow::*;
@@ -9,6 +10,7 @@ use memflow_win32::*;
 use memflow::error::{Error, Result};
 
 use capstone::prelude::*;
+use dataview::Pod;
 use unicorn::{CodeHookType, Cpu, CpuX86, MemHookType, Protection, RegisterX86, Unicorn};
 
 // TODO: prevent mapping memory thats reserved for the stack
@@ -69,8 +71,6 @@ pub struct Stack {
 impl Stack {
     pub fn create(emu: &Unicorn, base: u64, size: usize) -> Result<Self> {
         // initialize memory for stack
-        emu.reg_write(RegisterX86::RSP as i32, base)
-            .map_err(|_| Error::Bounds)?;
         emu.mem_map(
             base - size as u64,
             size,
@@ -78,39 +78,42 @@ impl Stack {
         )
         .map_err(|_| Error::Bounds)?;
 
-        // set the initial ret addr to 0
-        emu.mem_write(base - 8, &[0; 8])
+        // we leave 1 mb for local function variables here
+        let stack_start_addr = base - size::mb(1) as u64;
+        emu.reg_write(RegisterX86::RSP as i32, stack_start_addr)
             .map_err(|_| Error::Bounds)?;
 
         Ok(Self { base, size })
     }
 
-    // push
-    pub fn push(&self, emu: &Unicorn) -> Result<()> {
-        // TODO: check stack underflow
-
+    // TODO: u32 / u64
+    pub fn push(&self, emu: &Unicorn, value: u64) -> Result<()> {
         let mut rsp = emu
             .reg_read(RegisterX86::RSP as i32)
             .map_err(|_| Error::Bounds)?;
-        if rsp - 8 < self.base {
-            return Err(Error::Bounds);
+        if rsp + (size_of::<u64>() as u64) > self.base {
+            return Err(Error::Other("stack underflow"));
         }
 
-        rsp -= 8; // sizeof(u64)
+        rsp -= size_of::<u64>() as u64;
+
+        emu.mem_write(rsp, value.as_bytes())
+            .map_err(|_| Error::Bounds)?;
+
         emu.reg_write(RegisterX86::RSP as i32, rsp)
             .map_err(|_| Error::Bounds)?;
 
-        // write to rsp value
-        // uc_mem_write(this->m_uc, stack_ptr, &val, sizeof(T));
-
         Ok(())
     }
-    // pop
+
+    // TODO: pop
+
     // etc?
 }
 
 pub struct Oven<T: VirtualMemory> {
     process: Arc<RefCell<Win32Process<T>>>,
+    ret_addr: Address,
 }
 
 // TODO: builder pattern would be nice here
@@ -118,6 +121,7 @@ impl<'a, T: VirtualMemory + 'static> Oven<T> {
     pub fn new(process: Win32Process<T>) -> Self {
         Self {
             process: Arc::new(RefCell::new(process)),
+            ret_addr: Address::from(0xDEADBEEFu64), // TODO: builder
         }
     }
 
@@ -136,7 +140,10 @@ impl<'a, T: VirtualMemory + 'static> Oven<T> {
 
         // TODO: make stack size configurable (builder)
         // step4: create stack (64bit)
-        let stack = Stack::create(emu.emu(), size::mb(32) as u64, size::mb(31));
+        let stack = Stack::create(emu.emu(), size::mb(32) as u64, size::mb(31))?;
+        stack.push(emu.emu(), self.ret_addr.as_u64())?;
+
+        // test: push str
 
         // step5: setup hooks
 
@@ -147,11 +154,12 @@ impl<'a, T: VirtualMemory + 'static> Oven<T> {
             .detail(true)
             .build()
             .unwrap();
+        let ret_addr = self.ret_addr;
         emu.add_code_hook(CodeHookType::CODE, 1, 0, move |uc, addr, size| {
             let instructions = uc.mem_read_as_vec(addr, size as usize).unwrap();
             let result = cs.disasm_all(&instructions, addr).unwrap();
             print!("{}", result.to_string());
-            if addr == 0 {
+            if addr == ret_addr.as_u64() {
                 //println!("done");
                 uc.emu_stop().unwrap();
             }
@@ -161,15 +169,6 @@ impl<'a, T: VirtualMemory + 'static> Oven<T> {
         // hook to trigger final execution end
         emu.add_mem_hook(MemHookType::MEM_FETCH_PROT, 1, 0, |_, ty, addr, size, _| {
             debug!("{:?}: 0x{:x} with size 0x{:x}", ty, addr, size);
-            if addr < size::mb(4) as u64 {
-                println!("{:?}: graceful end of execution", ty);
-                println!("{:?}: graceful end of execution", ty);
-                println!("{:?}: graceful end of execution", ty);
-                println!("{:?}: graceful end of execution", ty);
-                println!("{:?}: graceful end of execution", ty);
-                println!("{:?}: graceful end of execution", ty);
-                println!("{:?}: graceful end of execution", ty);
-            }
             false
         })
         .unwrap();

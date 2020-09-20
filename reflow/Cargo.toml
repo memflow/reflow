@@ -10,3 +10,4 @@ memflow = { version = "0.1", features = ["inventory"] }
 memflow-win32 = "0.1"
 unicorn = "0.9"
 capstone = "0.7"
+dataview = "0.1"
