@@ -37,7 +37,15 @@ pub struct Stack<'a> {
 
 impl<'a> Stack<'a> {
 
-    // TODO: push32() / push64()
+    // Note: maybe we dont have to do 32/64 (seperately) ~ ko1n
+    pub fn push32(&mut self, value: u32) {
+        self.entries.push(StackEntry::Value32(value));
+    }
+
+    pub fn push64(&mut self, value: u64) {
+        self.entries.push(StackEntry::Value64(value))
+    }
+
     // TODO: push_str()
     // TODO: push_pod()
 
