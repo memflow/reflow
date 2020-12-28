@@ -1,3 +1,6 @@
+mod stack;
+use stack::Stack;
+
 use log::{debug, info};
 
 use std::cell::RefCell;
@@ -60,58 +63,6 @@ process_emulator::reserve_stack(uint64_t size) {
     }
 }
 */
-
-pub struct Stack {
-    pub base: u64,
-    pub size: usize,
-}
-
-// TODO: custom error type
-
-impl Stack {
-    pub fn create(emu: &Unicorn, base: u64, size: usize) -> Result<Self> {
-        // initialize memory for stack
-        emu.mem_map(
-            base - size as u64,
-            size,
-            Protection::READ | Protection::WRITE,
-        )
-        .map_err(|_| Error::Bounds)?;
-
-        // TODO: overwrite stack with 0's on re-execution
-
-        // we leave 1 mb for local function variables here
-        let stack_start_addr = base - size::mb(1) as u64;
-        emu.reg_write(RegisterX86::RSP as i32, stack_start_addr)
-            .map_err(|_| Error::Bounds)?;
-
-        Ok(Self { base, size })
-    }
-
-    // TODO: u32 / u64
-    pub fn push(&self, emu: &Unicorn, value: u64) -> Result<()> {
-        let mut rsp = emu
-            .reg_read(RegisterX86::RSP as i32)
-            .map_err(|_| Error::Bounds)?;
-        if rsp + (size_of::<u64>() as u64) > self.base {
-            return Err(Error::Other("stack underflow"));
-        }
-
-        rsp -= size_of::<u64>() as u64;
-
-        emu.mem_write(rsp, value.as_bytes())
-            .map_err(|_| Error::Bounds)?;
-
-        emu.reg_write(RegisterX86::RSP as i32, rsp)
-            .map_err(|_| Error::Bounds)?;
-
-        Ok(())
-    }
-
-    // TODO: pop
-
-    // etc?
-}
 
 pub struct Oven<T: VirtualMemory> {
     process: Arc<RefCell<Win32Process<T>>>,

@@ -48,7 +48,7 @@ fn main() {
         .unwrap();
 
     // create inventory + connector
-    let inventory = unsafe { ConnectorInventory::try_new() }.unwrap();
+    let inventory = unsafe { ConnectorInventory::scan() };
     let connector = unsafe {
         inventory.create_connector(
             matches.value_of("connector").unwrap(),
