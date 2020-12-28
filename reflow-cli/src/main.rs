@@ -64,8 +64,8 @@ fn main() {
 
     println!("kernel: {:?}", kernel);
 
-    let mut process = kernel.into_process("ConsoleApplication2.exe").unwrap();
-    let module = process.module_info("ConsoleApplication2.exe").unwrap();
+    let mut process = kernel.into_process("ConsoleApplication1.exe").unwrap();
+    let module = process.module_info("ConsoleApplication1.exe").unwrap();
 
     println!("module: {:?}", module);
 
@@ -73,5 +73,7 @@ fn main() {
     let mut oven = Oven::new(process.clone());
 
     // ...
-    oven.reflow((module.base + 0x113a7).into()).unwrap();
+    oven.reflow((module.base + 0x110e1).into()).unwrap();
+    oven.reflow((module.base + 0x110e1).into()).unwrap();
+    oven.reflow((module.base + 0x110e1).into()).unwrap();
 }

@@ -4,8 +4,8 @@ use std::cell::RefCell;
 use std::mem::size_of;
 use std::sync::Arc;
 
-use memflow::*;
-use memflow_win32::*;
+use memflow::prelude::v1::*;
+use memflow_win32::prelude::v1::*;
 
 use memflow::error::{Error, Result};
 
@@ -78,6 +78,8 @@ impl Stack {
         )
         .map_err(|_| Error::Bounds)?;
 
+        // TODO: overwrite stack with 0's on re-execution
+
         // we leave 1 mb for local function variables here
         let stack_start_addr = base - size::mb(1) as u64;
         emu.reg_write(RegisterX86::RSP as i32, stack_start_addr)
@@ -143,6 +145,12 @@ impl<'a, T: VirtualMemory + 'static> Oven<T> {
         let stack = Stack::create(emu.emu(), size::mb(32) as u64, size::mb(31))?;
         stack.push(emu.emu(), self.ret_addr.as_u64())?;
 
+        // step4.2: clear entire ret_addr page with 0's
+        let ret_data = [0u8; size::kb(4)];
+        emu.mem_map(self.ret_addr.as_page_aligned(size::kb(4)).as_u64(), size::kb(4), Protection::ALL)
+            .unwrap();
+        emu.mem_write(self.ret_addr.as_page_aligned(size::kb(4)).as_u64(), &ret_data).unwrap();
+
         // test: push str
 
         // step5: setup hooks
@@ -156,11 +164,13 @@ impl<'a, T: VirtualMemory + 'static> Oven<T> {
             .unwrap();
         let ret_addr = self.ret_addr;
         emu.add_code_hook(CodeHookType::CODE, 1, 0, move |uc, addr, size| {
-            let instructions = uc.mem_read_as_vec(addr, size as usize).unwrap();
-            let result = cs.disasm_all(&instructions, addr).unwrap();
-            print!("{}", result.to_string());
-            if addr == ret_addr.as_u64() {
-                //println!("done");
+            if addr != ret_addr.as_u64() {
+                let instructions = uc.mem_read_as_vec(addr, size as usize).unwrap();
+                let result = cs.disasm_all(&instructions, addr).unwrap();
+                print!("{}", result.to_string());
+            } else {
+                println!("reached final ret!");
+                println!("result: eax={}", uc.reg_read_i32(RegisterX86::RAX as i32).unwrap());
                 uc.emu_stop().unwrap();
             }
         })
@@ -180,7 +190,14 @@ impl<'a, T: VirtualMemory + 'static> Oven<T> {
             1,
             0,
             move |emu, ty, addr, size, val| {
+                // TODO: check final ret addr before mapping
                 debug!("{:?}: 0x{:x} with size 0x{:x}", ty, addr, size);
+                if addr == ret_addr.as_u64() {
+                    println!("reached end of execution");
+                    //emu.emu_stop().unwrap();
+                    // TODO: put 00 00 in execution context at ret_addr
+                } else {
+                }
                 map_from_process(emu, addr, &mut cloned_proc.borrow_mut());
                 true
             },
@@ -229,16 +246,14 @@ impl<'a, T: VirtualMemory + 'static> Oven<T> {
 
         // step6:
         emu.emu_start(addr.as_u64(), (addr + size::mb(500)).as_u64(), 0, 0)
-            .unwrap();
+            .ok();
+
+        if emu.reg_read(RegisterX86::RSP).unwrap_or_default() == self.ret_addr.as_u64() {
+            println!("execution successful");
+        } else {
+            println!("execution failed: {:x}", emu.reg_read(RegisterX86::RSP).unwrap_or_default());
+        }
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
     }
 }
