@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::sync::Arc;
+
 use clap::*;
 use log::Level;
 
@@ -69,11 +72,26 @@ fn main() {
 
     println!("module: {:?}", module);
 
+    /*
+    let execution = Oven::new()
+      .stack(Stack::new() // < We do not have the unicorn context here to create the stack on the get-go
+        .ret_addr(0xDEADBEEFu64)
+        .push_str("test string on stack")
+        .push_obj(some_pod_object))
+      .entry_point(func_addr);
+        */
+
     // create a new oven
-    let mut oven = Oven::new(process.clone());
+    let cloned_proc = Arc::new(RefCell::new(process.clone()));
+    let stack = Stack::new()
+        .base(size::gb(1000) as u64)
+        .size(size::mb(31) as u64)
+        .ret_addr(0x1234u64)
+        .push64(0);
+    let mut oven = Oven::new(cloned_proc, stack);
 
     // ...
     oven.reflow((module.base + 0x110e1).into()).unwrap();
-    oven.reflow((module.base + 0x110e1).into()).unwrap();
-    oven.reflow((module.base + 0x110e1).into()).unwrap();
+    //oven.reflow((module.base + 0x110e1).into()).unwrap();
+    //oven.reflow((module.base + 0x110e1).into()).unwrap();
 }

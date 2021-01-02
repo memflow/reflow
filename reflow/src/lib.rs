@@ -1,5 +1,5 @@
-mod stack;
-use stack::Stack;
+pub mod stack;
+pub use stack::Stack;
 
 use log::{debug, info};
 
@@ -64,18 +64,15 @@ process_emulator::reserve_stack(uint64_t size) {
 }
 */
 
-pub struct Oven<T: VirtualMemory> {
+pub struct Oven<'a, T: VirtualMemory> {
     process: Arc<RefCell<Win32Process<T>>>,
-    ret_addr: Address,
+    stack: Stack<'a>,
 }
 
 // TODO: builder pattern would be nice here
-impl<'a, T: VirtualMemory + 'static> Oven<T> {
-    pub fn new(process: Win32Process<T>) -> Self {
-        Self {
-            process: Arc::new(RefCell::new(process)),
-            ret_addr: Address::from(0xDEADBEEFu64), // TODO: builder
-        }
+impl<'a, T: VirtualMemory + 'static> Oven<'a, T> {
+    pub fn new(process: Arc<RefCell<Win32Process<T>>>, stack: Stack<'a>) -> Self {
+        Self { process, stack }
     }
 
     // TODO: just a TEST func
@@ -88,19 +85,23 @@ impl<'a, T: VirtualMemory + 'static> Oven<T> {
         let mut emu = CpuX86::new(unicorn::Mode::MODE_64)
             .map_err(|_| Error::Other("failed to instantiate emulator"))?;
 
+        // step4: create stack (64bit)
+        self.stack.build(emu.emu())?;
+
         // step3: read initial code-page from process
         map_from_process(emu.emu(), addr.as_u64(), &mut self.process.borrow_mut());
 
-        // TODO: make stack size configurable (builder)
-        // step4: create stack (64bit)
-        let stack = Stack::create(emu.emu(), size::mb(32) as u64, size::mb(31))?;
-        stack.push(emu.emu(), self.ret_addr.as_u64())?;
-
         // step4.2: clear entire ret_addr page with 0's
+        let ret_addr = Address::from(self.stack.ret_addr);
         let ret_data = [0u8; size::kb(4)];
-        emu.mem_map(self.ret_addr.as_page_aligned(size::kb(4)).as_u64(), size::kb(4), Protection::ALL)
+        emu.mem_map(
+            ret_addr.as_page_aligned(size::kb(4)).as_u64(),
+            size::kb(4),
+            Protection::ALL,
+        )
+        .unwrap();
+        emu.mem_write(ret_addr.as_page_aligned(size::kb(4)).as_u64(), &ret_data)
             .unwrap();
-        emu.mem_write(self.ret_addr.as_page_aligned(size::kb(4)).as_u64(), &ret_data).unwrap();
 
         // test: push str
 
@@ -113,7 +114,6 @@ impl<'a, T: VirtualMemory + 'static> Oven<T> {
             .detail(true)
             .build()
             .unwrap();
-        let ret_addr = self.ret_addr;
         emu.add_code_hook(CodeHookType::CODE, 1, 0, move |uc, addr, size| {
             if addr != ret_addr.as_u64() {
                 let instructions = uc.mem_read_as_vec(addr, size as usize).unwrap();
@@ -121,7 +121,10 @@ impl<'a, T: VirtualMemory + 'static> Oven<T> {
                 print!("{}", result.to_string());
             } else {
                 println!("reached final ret!");
-                println!("result: eax={}", uc.reg_read_i32(RegisterX86::RAX as i32).unwrap());
+                println!(
+                    "result: eax={}",
+                    uc.reg_read(RegisterX86::RAX as i32).unwrap()
+                );
                 uc.emu_stop().unwrap();
             }
         })
@@ -145,8 +148,8 @@ impl<'a, T: VirtualMemory + 'static> Oven<T> {
                 debug!("{:?}: 0x{:x} with size 0x{:x}", ty, addr, size);
                 if addr == ret_addr.as_u64() {
                     println!("reached end of execution");
-                    //emu.emu_stop().unwrap();
-                    // TODO: put 00 00 in execution context at ret_addr
+                //emu.emu_stop().unwrap();
+                // TODO: put 00 00 in execution context at ret_addr
                 } else {
                 }
                 map_from_process(emu, addr, &mut cloned_proc.borrow_mut());
@@ -199,10 +202,13 @@ impl<'a, T: VirtualMemory + 'static> Oven<T> {
         emu.emu_start(addr.as_u64(), (addr + size::mb(500)).as_u64(), 0, 0)
             .ok();
 
-        if emu.reg_read(RegisterX86::RSP).unwrap_or_default() == self.ret_addr.as_u64() {
+        if emu.reg_read(RegisterX86::RSP).unwrap_or_default() == ret_addr.as_u64() {
             println!("execution successful");
         } else {
-            println!("execution failed: {:x}", emu.reg_read(RegisterX86::RSP).unwrap_or_default());
+            println!(
+                "execution failed: {:x}",
+                emu.reg_read(RegisterX86::RSP).unwrap_or_default()
+            );
         }
 
         Ok(())
