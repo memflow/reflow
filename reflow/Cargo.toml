@@ -6,8 +6,7 @@ edition = "2018"
 
 [dependencies]
 log = { version = "0.4", default-features = false }
-memflow = { version = "0.1", features = ["inventory"] }
-memflow-win32 = "0.1"
+memflow = { path = "../../memflow/memflow" }
 unicorn = "0.9"
 capstone = "0.7"
 dataview = "0.1"

@@ -68,21 +68,21 @@ impl<'a> Stack<'a> {
     // TODO: push_str()
     // TODO: push_pod()
 
-    pub fn build(&self, emu: &Unicorn) -> Result<()> {
+    pub fn build(&self, emu: &Unicorn) -> std::result::Result<(), &'static str> {
         // initialize memory for stack
         emu.mem_map(
             self.base as u64,
             self.size as usize,
             Protection::READ | Protection::WRITE,
         )
-        .map_err(|_| Error::Other("unable to map memory at stack base"))?;
+        .map_err(|_| "unable to map memory at stack base")?;
 
         // TODO: overwrite stack with 0's on re-execution
 
         // we leave 1 mb for local function variables here
         let stack_start_addr = self.base + self.size - size::mb(1) as u64;
         emu.reg_write(RegisterX86::RSP as i32, stack_start_addr)
-            .map_err(|_| Error::Other("unable to write rsp register"))?;
+            .map_err(|_| "unable to write rsp register")?;
 
         // prepare stack
         for entry in self.entries.iter() {
@@ -103,21 +103,21 @@ impl<'a> Stack<'a> {
     }
 
     // TODO: u32
-    fn build_push(&self, emu: &Unicorn, value: u64) -> Result<()> {
+    fn build_push(&self, emu: &Unicorn, value: u64) -> std::result::Result<(), &'static str> {
         let mut rsp = emu
             .reg_read(RegisterX86::RSP as i32)
-            .map_err(|_| Error::Other("unable to read rsp register"))?;
+            .map_err(|_| "unable to read rsp register")?;
         if rsp + (size_of::<u64>() as u64) > self.base + self.size {
-            return Err(Error::Other("stack underflow"));
+            return Err("stack underflow");
         }
 
         rsp -= size_of::<u64>() as u64;
 
         emu.mem_write(rsp, value.as_bytes())
-            .map_err(|_| Error::Other("unable to write memory at rsp"))?;
+            .map_err(|_| "unable to write memory at rsp")?;
 
         emu.reg_write(RegisterX86::RSP as i32, rsp)
-            .map_err(|_| Error::Other("unable to write rsp register"))?;
+            .map_err(|_| "unable to write rsp register")?;
 
         Ok(())
     }

@@ -6,8 +6,7 @@ edition = "2018"
 
 [dependencies]
 reflow = { path = "../reflow" }
-memflow = { version = "0.1", features = ["inventory"] }
-memflow-win32 = "0.1"
+memflow = { path = "../../memflow/memflow" }
 clap = "2.33"
 log = { version = "0.4", default-features = false }
 simple_logger = "1.0"

@@ -1,11 +1,10 @@
 use std::cell::RefCell;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use clap::*;
 use log::Level;
 
-use memflow::*;
-use memflow_win32::*;
+use memflow::prelude::v1::*;
 
 use reflow::*;
 
@@ -36,7 +35,6 @@ fn main() {
         )
         .get_matches();
 
-    // set log level
     let level = match matches.occurrences_of("verbose") {
         0 => Level::Error,
         1 => Level::Warn,
@@ -45,30 +43,24 @@ fn main() {
         4 => Level::Trace,
         _ => Level::Trace,
     };
+
     simple_logger::SimpleLogger::new()
         .with_level(level.to_level_filter())
         .init()
         .unwrap();
 
-    // create inventory + connector
-    let inventory = unsafe { ConnectorInventory::scan() };
-    let connector = unsafe {
-        inventory.create_connector(
-            matches.value_of("connector").unwrap(),
-            &ConnectorArgs::parse(matches.value_of("args").unwrap()).unwrap(),
-        )
-    }
-    .unwrap();
-
-    let kernel = Kernel::builder(connector)
-        .build_default_caches()
+    // build connector + os
+    let inventory = Inventory::scan();
+    let os = inventory
+        .builder()
+        .connector(matches.value_of("connector").unwrap())
+        .args(Args::parse(matches.value_of("args").unwrap()).expect("unable to parse args"))
+        .os("win32")
         .build()
-        .unwrap();
+        .expect("unable to instantiate connector / os");
 
-    println!("kernel: {:?}", kernel);
-
-    let mut process = kernel.into_process("ConsoleApplication1.exe").unwrap();
-    let module = process.module_info("ConsoleApplication1.exe").unwrap();
+    let mut process = os.into_process_by_name("ConsoleApplication1.exe").unwrap();
+    let module = process.module_by_name("ConsoleApplication1.exe").unwrap();
 
     println!("module: {:?}", module);
 
@@ -82,7 +74,7 @@ fn main() {
         */
 
     // create a new oven
-    let cloned_proc = Arc::new(RefCell::new(process.clone()));
+    let cloned_proc = Rc::new(RefCell::new(process.clone()));
     let stack = Stack::new()
         .base(size::gb(1000) as u64)
         .size(size::mb(31) as u64)

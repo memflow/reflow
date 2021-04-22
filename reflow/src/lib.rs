@@ -5,10 +5,10 @@ use log::{debug, info};
 
 use std::cell::RefCell;
 use std::mem::size_of;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use memflow::prelude::v1::*;
-use memflow_win32::prelude::v1::*;
 
 use memflow::error::{Error, Result};
 
@@ -18,11 +18,11 @@ use unicorn::{CodeHookType, Cpu, CpuX86, MemHookType, Protection, RegisterX86, U
 
 // TODO: prevent mapping memory thats reserved for the stack
 // TODO: error handling
-fn map_from_process<T: VirtualMemory>(emu: &Unicorn, addr: u64, process: &mut Win32Process<T>) {
+fn map_from_process<P: Process>(emu: &Unicorn, addr: u64, process: &mut P) {
     let page_size = emu.query(unicorn::Query::PAGE_SIZE).unwrap();
     let page_addr = Address::from(addr).as_page_aligned(page_size);
     let page = process
-        .virt_mem
+        .virt_mem()
         .virt_read_raw(page_addr, page_size)
         .unwrap();
 
@@ -64,32 +64,34 @@ process_emulator::reserve_stack(uint64_t size) {
 }
 */
 
-pub struct Oven<'a, T: VirtualMemory> {
-    process: Arc<RefCell<Win32Process<T>>>,
+pub struct Oven<'a, P: Process> {
+    process: Rc<RefCell<P>>,
     stack: Stack<'a>,
 }
 
 // TODO: builder pattern would be nice here
-impl<'a, T: VirtualMemory + 'static> Oven<'a, T> {
-    pub fn new(process: Arc<RefCell<Win32Process<T>>>, stack: Stack<'a>) -> Self {
+impl<'a, P: Process + 'static> Oven<'a, P> {
+    pub fn new(process: Rc<RefCell<P>>, stack: Stack<'a>) -> Self {
         Self { process, stack }
     }
 
     // TODO: just a TEST func
-    pub fn reflow(&mut self, addr: Address) -> Result<()> {
+    pub fn reflow(&mut self, addr: Address) -> std::result::Result<(), &'static str> {
         // TODO: dispatch per architecture - currently this assumes x64
 
         // step1: find module containing the address
 
         // step2: create unicorn context
-        let mut emu = CpuX86::new(unicorn::Mode::MODE_64)
-            .map_err(|_| Error::Other("failed to instantiate emulator"))?;
+        let mut emu =
+            CpuX86::new(unicorn::Mode::MODE_64).map_err(|_| "failed to instantiate emulator")?;
 
         // step4: create stack (64bit)
-        self.stack.build(emu.emu())?;
+        self.stack
+            .build(emu.emu())
+            .map_err(|_| "unable to build stack")?;
 
         // step3: read initial code-page from process
-        map_from_process(emu.emu(), addr.as_u64(), &mut self.process.borrow_mut());
+        map_from_process(emu.emu(), addr.as_u64(), &mut *self.process.borrow_mut());
 
         // step4.2: clear entire ret_addr page with 0's
         let ret_addr = Address::from(self.stack.ret_addr);
@@ -152,7 +154,7 @@ impl<'a, T: VirtualMemory + 'static> Oven<'a, T> {
                 // TODO: put 00 00 in execution context at ret_addr
                 } else {
                 }
-                map_from_process(emu, addr, &mut cloned_proc.borrow_mut());
+                map_from_process(emu, addr, &mut *cloned_proc.borrow_mut());
                 true
             },
         )
@@ -166,7 +168,7 @@ impl<'a, T: VirtualMemory + 'static> Oven<'a, T> {
             0,
             move |emu, ty, addr, size, val| {
                 debug!("{:?}: 0x{:x} with size 0x{:x}", ty, addr, size);
-                map_from_process(emu, addr, &mut cloned_proc.borrow_mut());
+                map_from_process(emu, addr, &mut *cloned_proc.borrow_mut());
                 true
             },
         )
@@ -180,7 +182,7 @@ impl<'a, T: VirtualMemory + 'static> Oven<'a, T> {
             0,
             move |emu, ty, addr, size, val| {
                 debug!("{:?}: 0x{:x} with size 0x{:x}", ty, addr, size);
-                map_from_process(emu, addr, &mut cloned_proc.borrow_mut());
+                map_from_process(emu, addr, &mut *cloned_proc.borrow_mut());
                 true
             },
         )
