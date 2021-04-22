@@ -127,6 +127,8 @@ impl<'a, P: Process + 'static> Oven<'a, P> {
                     "result: eax={}",
                     uc.reg_read(RegisterX86::RAX as i32).unwrap()
                 );
+                uc.reg_write(RegisterX86::RSP as i32, ret_addr.as_u64())
+                    .unwrap();
                 uc.emu_stop().unwrap();
             }
         })
