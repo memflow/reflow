@@ -1,9 +1,20 @@
-[workspace]
-members = [
-    "reflow",
-    "reflow-cli",
-]
-default-members = [
-    "reflow",
-    "reflow-cli",
-]
+[package]
+name = "reflow"
+version = "0.1.0"
+authors = ["ko1N <ko1N1337@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+log = { version = "0.4", default-features = false }
+memflow = { git = "https://github.com/memflow/memflow", branch = "next", features = ["plugins"] }
+unicorn = "0.9"
+capstone = "0.7"
+dataview = "0.1"
+
+[dev-dependencies]
+clap = "2.33"
+simple_logger = "1.0"
+
+[[example]]
+name = "intresult"
+path = "examples/intresult.rs"

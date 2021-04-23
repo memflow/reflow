@@ -1,19 +1,18 @@
 #!/bin/bash
 
-echo $@
+if [[ ! -z $RUST_SUDO ]]; then
 
-PCMD=$(cat /proc/$PPID/cmdline | strings -1)
-PCMD=$(echo -n ${PCMD##*/})
-RNAME=$(echo -n ${@##*/})
+    exec sudo -E $@
 
-if [[ "$PCMD" =~ "cargo test" ]]; then
-	exec $@
-elif [[ "$PCMD" =~ "cargo bench" ]]; then
-	exec $@
 else
-	if [[ $RNAME =~ "reflow-cli" ]]; then
-		exec sudo PATH=$PATH RUST_BACKTRACE=$RUST_BACKTRACE $@
-	else
-		exec $@
-	fi
+
+    if [[ ! -z $RUST_SETPTRACE ]]; then
+        if [[ -z "$(getcap $1 | grep -i cap_sys_ptrace)" ]]; then
+            echo "setting CAP_SYS_PTRACE=ep for $1"
+            sudo setcap 'CAP_SYS_PTRACE=ep' $1
+        fi
+    fi
+
+    exec $@
+
 fi

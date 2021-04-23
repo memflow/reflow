@@ -1,57 +1,58 @@
-pub mod stack;
-pub use stack::Stack;
-
-use log::{debug, info};
+use crate::execution::Execution64;
+use crate::params::Parameters;
+use crate::stack::Stack;
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use memflow::prelude::v1::*;
 
-use memflow::error::{Error, Result};
+use unicorn::*;
 
-use capstone::prelude::*;
-use unicorn::{CodeHookType, Cpu, CpuX86, MemHookType, Protection, RegisterX86, Unicorn};
-
-// TODO: prevent mapping memory thats reserved for the stack
-// TODO: error handling
-fn map_from_process<P: Process>(emu: &Unicorn, addr: u64, process: &mut P) {
-    let page_size = emu.query(unicorn::Query::PAGE_SIZE).unwrap();
-    let page_addr = Address::from(addr).as_page_aligned(page_size);
-    let page = process
-        .virt_mem()
-        .virt_read_raw(page_addr, page_size)
-        .unwrap();
-
-    // TODO: should this really be PROT_ALL ?
-    emu.mem_map(page_addr.as_u64(), page_size, Protection::ALL)
-        .unwrap();
-    emu.mem_write(page_addr.as_u64(), &page).unwrap();
-}
-
-pub struct Oven<'a, P: Process> {
+pub struct Reflow<'a, P: Process> {
     process: Rc<RefCell<P>>,
-    stack: Stack<'a>,
+    stack: Option<Stack>,
+    params: Option<Parameters<'a>>,
+    entry_point: Address,
 }
 
-// TODO: builder pattern would be nice here
-impl<'a, P: Process + 'static> Oven<'a, P> {
-    pub fn new(process: Rc<RefCell<P>>, stack: Stack<'a>) -> Self {
-        Self { process, stack }
+impl<'a, P: Process + 'static> Reflow<'a, P> {
+    pub fn new(process: Rc<RefCell<P>>) -> Self {
+        Self {
+            process,
+            stack: None,
+            params: None,
+            entry_point: Address::NULL,
+        }
     }
 
-    // TODO: just a TEST func
-    pub fn reflow(&mut self, addr: Address) -> std::result::Result<(), &str> {
-        // TODO: dispatch per architecture - currently this assumes x64
+    pub fn stack(mut self, stack: Stack) -> Self {
+        self.stack = Some(stack);
+        self
+    }
 
+    pub fn params(mut self, params: Parameters<'a>) -> Self {
+        self.params = Some(params);
+        self
+    }
+
+    pub fn entry_point(mut self, entry_point: Address) -> Self {
+        self.entry_point = entry_point;
+        self
+    }
+
+    pub fn run(&mut self) -> std::result::Result<(), String> {
+        self.run_x64()
+    }
+
+    fn run_x64(&mut self) -> std::result::Result<(), String> {
         // step1: find module containing the address
 
         // step2: create unicorn context
-        let mut emu =
-            CpuX86::new(unicorn::Mode::MODE_64).map_err(|_| "failed to instantiate emulator")?;
-
-        // step4: create stack (64bit)
-        self.stack.build(emu.emu())?;
+        let mut execution = Execution64::new()?
+            .build_stack(&mut self.stack.unwrap_or_default())?
+            .build_params(&mut self.params.unwrap_or_default())?;
+        // TODO: push ret addr
 
         // step3: read initial code-page from process
         map_from_process(emu.emu(), addr.as_u64(), &mut *self.process.borrow_mut());
@@ -166,4 +167,18 @@ impl<'a, P: Process + 'static> Oven<'a, P> {
 
         Ok(())
     }
+}
+
+fn map_from_process<P: Process>(emu: &Unicorn, addr: u64, process: &mut P) {
+    let page_size = emu.query(unicorn::Query::PAGE_SIZE).unwrap();
+    let page_addr = Address::from(addr).as_page_aligned(page_size);
+    let page = process
+        .virt_mem()
+        .virt_read_raw(page_addr, page_size)
+        .unwrap();
+
+    // TODO: should this really be PROT_ALL ?
+    emu.mem_map(page_addr.as_u64(), page_size, Protection::ALL)
+        .unwrap();
+    emu.mem_write(page_addr.as_u64(), &page).unwrap();
 }

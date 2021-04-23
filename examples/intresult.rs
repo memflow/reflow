@@ -1,3 +1,8 @@
+/*
+
+
+*/
+
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -75,12 +80,8 @@ fn main() {
       .entry_point(func_addr);
         */
 
-    /////////////////////////////////
-    // First test app
-    // create a new oven
-    /*
     let cloned_proc = Rc::new(RefCell::new(process.clone()));
-    let stack = Stack::new()
+    let stack = Param::new()
         .base(size::gb(1000) as u64)
         .size(size::mb(31) as u64)
         .ret_addr(0x1234u64);
@@ -90,20 +91,4 @@ fn main() {
     oven.reflow((module.base + 0x110e1).into()).unwrap();
     //oven.reflow((module.base + 0x110e1).into()).unwrap();
     //oven.reflow((module.base + 0x110e1).into()).unwrap();
-    */
-
-    /////////////////////////////////
-    // Second test app
-    // create a new oven
-    let cloned_proc = Rc::new(RefCell::new(process.clone()));
-    let stack = Stack::new()
-        .base(size::gb(1000) as u64)
-        .size(size::mb(31) as u64)
-        .ret_addr(0x1234u64)
-        .push_str("name6\0")
-        .push64(0);
-    let mut oven = Oven::new(cloned_proc, stack);
-
-    oven.reflow((module.base + 0x113a7).into())
-        .expect("unable to reflow");
 }
