@@ -52,7 +52,14 @@ let mut execution = Reflow::new(process)
     .stack(Stack::new().ret_addr(0xDEADBEEFu64))
     .params(Parameters::new().reg_str(RegisterX86::RCX, "name3"))
     .entry_point((module.base + 0x113a7).into());
-execution.run().expect("unable to execute function");
+let result = execution.run().expect("unable to execute function");
+
+    info!(
+        "result: {}",
+        result
+            .reg_read_u64(RegisterX86::RAX)
+            .expect("unable to read register")
+    );
 ```
 
 More complete examples can be found in the `examples/` directory.
