@@ -103,7 +103,7 @@ fn main() {
     info!(
         "result: {}",
         result
-            .reg_read_u64(RegisterX86::RAX)
-            .expect("unable to read register")
+            .reg_read_u64(RegisterX86::EAX)
+            .expect("unable to read register") as i32
     );
 }

@@ -45,10 +45,7 @@ impl<'a, T: 'a> Execution64<'a, T> {
                 size::gb(1),
                 Protection::READ | Protection::WRITE,
             )
-            .map_err(|e| {
-                println!("error: {}", e);
-                "unable to map high memory for data references"
-            })?;
+            .map_err(|_| "unable to map high memory for data references")?;
 
         // TODO: allow reexecution and 0 stack
 
@@ -148,7 +145,7 @@ impl<'a, T: 'a> Execution64<'a, T> {
         // TODO: implement real protection from memory
         self.emu
             .add_mem_hook(MemHookType::MEM_FETCH_PROT, 1, 0, |_, ty, addr, size, _| {
-                println!("{:?}: 0x{:x} with size 0x{:x}", ty, addr, size);
+                trace!("{:?}: 0x{:x} with size 0x{:x}", ty, addr, size);
                 false
             })
             .map_err(|_| "unable to create unicorn mem prot hook".to_string())?;
@@ -266,10 +263,9 @@ impl<'a, T: 'a> Execution64<'a, T> {
 
     fn push_data_to_stack(&mut self, data: &[u8]) -> std::result::Result<(), String> {
         // store in data section
-        self.emu.mem_write(self.data_base, data).map_err(|e| {
-            println!("error: {}", e);
-            "unable to write string into high mem"
-        })?;
+        self.emu
+            .mem_write(self.data_base, data)
+            .map_err(|_| "unable to write string into high mem")?;
 
         // push ptr ref to stack
         self.push_to_stack(self.data_base)?;
@@ -284,10 +280,9 @@ impl<'a, T: 'a> Execution64<'a, T> {
         data: &[u8],
     ) -> std::result::Result<(), String> {
         // store in data section
-        self.emu.mem_write(self.data_base, data).map_err(|e| {
-            println!("error: {}", e);
-            "unable to write string into high mem"
-        })?;
+        self.emu
+            .mem_write(self.data_base, data)
+            .map_err(|_| "unable to write string into high mem")?;
 
         // push ptr ref to stack
         self.emu

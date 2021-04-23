@@ -82,8 +82,6 @@ fn main() {
     let mut process = os.into_process_by_name("ConsoleApplication1.exe").unwrap();
     let module = process.module_by_name("ConsoleApplication1.exe").unwrap();
 
-    println!("module: {:?}", module);
-
     let mut execution = Oven::new(process)
         .stack(Stack::new().ret_addr(0x1234u64))
         .entry_point((module.base + 0x110e1).into());
@@ -92,7 +90,7 @@ fn main() {
     info!(
         "result: {}",
         result
-            .reg_read_u64(RegisterX86::RAX)
-            .expect("unable to read register")
+            .reg_read_u64(RegisterX86::EAX)
+            .expect("unable to read register") as i32
     );
 }
