@@ -1,9 +1,10 @@
 use memflow::prelude::v1::*;
 
+#[derive(Debug, Clone)]
 pub struct Stack {
     pub(crate) base: u64,
     pub(crate) size: u64,
-    pub (crate) ret_addr: u64,
+    pub(crate) ret_addr: u64,
 }
 
 impl Stack {

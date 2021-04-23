@@ -1,14 +1,43 @@
-/*
+/*!
+ * Executes a function which gets a string as argument,
+ *
+ * # Examples:
+ *
+ * ```ignore
+ * struct table_entry {
+ *     const char* name;
+ *     int value;
+ * };
+ *
+ * table_entry table[4];
+ *
+ * int examplefn(const char *elem) {
+ *    for (int i = 0; i < sizeof(table) / sizeof(table_entry); ++i) {
+ *       if (!strcmp(table[i].name, elem)) {
+ *           return table[i].value;
+ *       }
+ *    }
+ *    return -1;
+ * }
+ *
+ * int main() {
+ *     table[0] = { "name1", 1000 };
+ *     table[1] = { "name2", 1001 };
+ *     table[2] = { "name3", 1002 };
+ *     table[3] = { "name4", 1003 };
+ *
+ *     int result = testfn("name4");
+ *     printf("result = %d\n", result);
+ *
+ *     system("PAUSE");
+ *     return 0;
+ * }
+ * ```
  */
-
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use clap::*;
-use log::Level;
+use log::{info, Level};
 
 use memflow::prelude::v1::*;
-
 use reflow::prelude::v1::*;
 
 fn main() {
@@ -65,35 +94,16 @@ fn main() {
     let mut process = os.into_process_by_name("example_stringargs.exe").unwrap();
     let module = process.module_by_name("example_stringargs.exe").unwrap();
 
-    // TODO: add ability to write to regs as well
-    // TODO: rename Stack -> FunctionParameters or something?
-    /*
-    let execution = Oven::new()
-      .stack(Stack::new() // < We do not have the unicorn context here to create the stack on the get-go
-        .ret_addr(0xDEADBEEFu64)
-        .push_str("test string on stack")
-        .push_obj(some_pod_object))
-      .entry_point(func_addr);
-        */
-    let cloned_proc = Rc::new(RefCell::new(process.clone()));
-    let mut execution = Reflow::new(cloned_proc)
+    let mut execution = Oven::new(process)
         .stack(Stack::new().ret_addr(0xDEADBEEFu64))
         .params(Parameters::new().reg_str(RegisterX86::RCX, "name3"))
-        .entry_point((module.base + 0x11325).into());
-    execution.run();
+        .entry_point((module.base + 0x113a7).into());
+    let result = execution.reflow().expect("unable to execute function");
 
-    // create a new oven
-    /*
-    let cloned_proc = Rc::new(RefCell::new(process.clone()));
-    let stack = Param::new()
-        .base(size::gb(1000) as u64)
-        .size(size::mb(31) as u64)
-        .ret_addr(0x1234u64)
-        .push_str("name3\0")
-        .push64(0);
-    let mut oven = Oven::new(cloned_proc, stack);
-
-    oven.reflow((module.base + 0x11325).into())
-        .expect("unable to reflow");
-    */
+    info!(
+        "result: {}",
+        result
+            .reg_read_u64(RegisterX86::RAX)
+            .expect("unable to read register")
+    );
 }

@@ -1,24 +1,21 @@
-use std::mem::size_of;
+use unicorn::RegisterX86;
 
-use memflow::prelude::v1::*;
-
-use dataview::Pod;
-use unicorn::{Protection, RegisterX86, Unicorn};
-
+#[derive(Debug, Clone)]
 pub enum Parameter<'a> {
     Push32(u32),
     Push64(u64),
     PushStr(&'a str),
     PushString(String),
-    // TODO: pod objects?
+    // TODO: Pod objects?
     Reg32(RegisterX86, u32),
     Reg64(RegisterX86, u64),
     RegStr(RegisterX86, &'a str),
     RegString(RegisterX86, String),
 }
 
+#[derive(Debug, Clone)]
 pub struct Parameters<'a> {
-    pub entries: Vec<Parameter<'a>>,
+    pub(crate) entries: Vec<Parameter<'a>>,
 }
 
 impl<'a> Parameters<'a> {
@@ -67,16 +64,6 @@ impl<'a> Parameters<'a> {
         self.entries.push(Parameter::RegString(reg, value));
         self
     }
-
-    /*
-    pub fn build(&self, emu: &Unicorn) -> std::result::Result<(), &'static str> {
-
-    }
-
-    // TODO: u32
-    */
-
-    // TODO: pop?
 }
 
 impl<'a> Default for Parameters<'a> {

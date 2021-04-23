@@ -1,17 +1,32 @@
-/*
-
-
-*/
-
-use std::cell::RefCell;
-use std::rc::Rc;
-
+/*!
+ * Executes a function which returns an integer.
+ *
+ * # Examples:
+ *
+ * ```ignore
+ * int testfn() {
+ *     int a = 10;
+ *     int b = 20;
+ *     int c = 30;
+ *     int d = a + b;
+ *     int e = c - d;
+ *     return e + d;
+ * }
+ *
+ * int main() {
+ *     int result = testfn();
+ *     printf("result = %d\n", result);
+ *
+ *     system("PAUSE");
+ *     return 0;
+ * }
+ * ```
+ */
 use clap::*;
-use log::Level;
+use log::{info, Level};
 
 use memflow::prelude::v1::*;
-
-use reflow::*;
+use reflow::prelude::v1::*;
 
 fn main() {
     let matches = App::new("dump offsets example")
@@ -69,26 +84,15 @@ fn main() {
 
     println!("module: {:?}", module);
 
-    // TODO: add ability to write to regs as well
-    // TODO: rename Stack -> FunctionParameters or something?
-    /*
-    let execution = Oven::new()
-      .stack(Stack::new() // < We do not have the unicorn context here to create the stack on the get-go
-        .ret_addr(0xDEADBEEFu64)
-        .push_str("test string on stack")
-        .push_obj(some_pod_object))
-      .entry_point(func_addr);
-        */
+    let mut execution = Oven::new(process)
+        .stack(Stack::new().ret_addr(0x1234u64))
+        .entry_point((module.base + 0x110e1).into());
+    let result = execution.reflow().expect("unable to execute function");
 
-    let cloned_proc = Rc::new(RefCell::new(process.clone()));
-    let stack = Param::new()
-        .base(size::gb(1000) as u64)
-        .size(size::mb(31) as u64)
-        .ret_addr(0x1234u64);
-    let mut oven = Oven::new(cloned_proc, stack);
-
-    // ...
-    oven.reflow((module.base + 0x110e1).into()).unwrap();
-    //oven.reflow((module.base + 0x110e1).into()).unwrap();
-    //oven.reflow((module.base + 0x110e1).into()).unwrap();
+    info!(
+        "result: {}",
+        result
+            .reg_read_u64(RegisterX86::RAX)
+            .expect("unable to read register")
+    );
 }
