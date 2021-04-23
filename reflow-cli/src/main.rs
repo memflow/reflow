@@ -64,6 +64,8 @@ fn main() {
 
     println!("module: {:?}", module);
 
+    // TODO: add ability to write to regs as well
+    // TODO: rename Stack -> FunctionParameters or something?
     /*
     let execution = Oven::new()
       .stack(Stack::new() // < We do not have the unicorn context here to create the stack on the get-go
@@ -73,17 +75,35 @@ fn main() {
       .entry_point(func_addr);
         */
 
+    /////////////////////////////////
+    // First test app
     // create a new oven
+    /*
     let cloned_proc = Rc::new(RefCell::new(process.clone()));
     let stack = Stack::new()
         .base(size::gb(1000) as u64)
         .size(size::mb(31) as u64)
-        .ret_addr(0x1234u64)
-        .push64(0);
+        .ret_addr(0x1234u64);
     let mut oven = Oven::new(cloned_proc, stack);
 
     // ...
     oven.reflow((module.base + 0x110e1).into()).unwrap();
     //oven.reflow((module.base + 0x110e1).into()).unwrap();
     //oven.reflow((module.base + 0x110e1).into()).unwrap();
+    */
+
+    /////////////////////////////////
+    // Second test app
+    // create a new oven
+    let cloned_proc = Rc::new(RefCell::new(process.clone()));
+    let stack = Stack::new()
+        .base(size::gb(1000) as u64)
+        .size(size::mb(31) as u64)
+        .ret_addr(0x1234u64)
+        .push_str("name6\0")
+        .push64(0);
+    let mut oven = Oven::new(cloned_proc, stack);
+
+    oven.reflow((module.base + 0x113a7).into())
+        .expect("unable to reflow");
 }
