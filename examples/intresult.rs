@@ -4,7 +4,7 @@
  * # Examples:
  *
  * ```ignore
- * int testfn() {
+ * int examplefn() {
  *     int a = 10;
  *     int b = 20;
  *     int c = 30;
@@ -14,7 +14,7 @@
  * }
  *
  * int main() {
- *     int result = testfn();
+ *     int result = examplefn();
  *     printf("result = %d\n", result);
  *
  *     system("PAUSE");
@@ -85,8 +85,8 @@ fn main() {
     let mut execution = Oven::new(process)
         .stack(Stack::new().ret_addr(0x1234u64))
         .entry_point((module.base + 0x110e1).into());
-    let result = execution.reflow().expect("unable to execute function");
 
+    let result = execution.reflow().expect("unable to execute function");
     info!(
         "result: {}",
         result

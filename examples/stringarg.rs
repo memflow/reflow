@@ -26,7 +26,7 @@
  *     table[2] = { "name3", 1002 };
  *     table[3] = { "name4", 1003 };
  *
- *     int result = testfn("name4");
+ *     int result = examplefn("name4");
  *     printf("result = %d\n", result);
  *
  *     system("PAUSE");
@@ -102,8 +102,8 @@ fn main() {
             matches.value_of("param").unwrap_or_default(),
         ))
         .entry_point((module.base + 0x112f3).into());
-    let result = execution.reflow().expect("unable to execute function");
 
+    let result = execution.reflow().expect("unable to execute function");
     info!(
         "result: {}",
         result

@@ -32,7 +32,7 @@ int main() {
     table[2] = { "name3", 1002 };
     table[3] = { "name4", 1003 };
 
-    int result = testfn("name4");
+    int result = examplefn("name4");
     printf("result = %d\n", result);
 
     system("PAUSE");
@@ -48,12 +48,16 @@ Lets assume the function `examplefn` is located at `module.base + 0x113a7`. The 
 let mut process = os.into_process_by_name("example_stringargs.exe").unwrap();
 let module = process.module_by_name("example_stringargs.exe").unwrap();
 
-let mut execution = Reflow::new(process)
-    .stack(Stack::new().ret_addr(0xDEADBEEFu64))
-    .params(Parameters::new().reg_str(RegisterX86::RCX, "name3"))
+let mut execution = Oven::new(process)
+    .stack(
+        Stack::new()
+            .ret_addr(0xDEADBEEFu64))
+    .params(
+        Parameters::new()
+            .reg_str(RegisterX86::RCX, "name3"))
     .entry_point((module.base + 0x113a7).into());
-let result = execution.run().expect("unable to execute function");
 
+let result = execution.run().expect("unable to execute function");
 info!(
     "result: {}",
     result
