@@ -64,6 +64,10 @@ info!(
 
 More complete examples can be found in the `examples/` directory.
 
+## Demo
+
+[![reflow demo](http://img.youtube.com/vi/LfZfCNIHhk8/0.jpg)](http://www.youtube.com/watch?v=LfZfCNIHhk8 "reflow demo")
+
 ## License
 
 Licensed under MIT License, see [LICENSE](LICENSE).
