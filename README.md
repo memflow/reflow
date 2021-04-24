@@ -12,18 +12,18 @@ Take the following C sample program running on a target:
 ```c
 struct table_entry {
     const char* name;
-	   int value;
+    int value;
 };
 
 table_entry table[4];
 
 int examplefn(const char *elem) {
-   for (int i = 0; i < sizeof(table) / sizeof(table_entry); ++i) {
-      if (!strcmp(table[i].name, elem)) {
-          return table[i].value;
-      }
-   }
-   return -1;
+    for (int i = 0; i < sizeof(table) / sizeof(table_entry); ++i) {
+        if (!strcmp(table[i].name, elem)) {
+            return table[i].value;
+        }
+    }
+    return -1;
 }
 
 int main() {
@@ -54,12 +54,12 @@ let mut execution = Reflow::new(process)
     .entry_point((module.base + 0x113a7).into());
 let result = execution.run().expect("unable to execute function");
 
-    info!(
-        "result: {}",
-        result
-            .reg_read_u64(RegisterX86::RAX)
-            .expect("unable to read register")
-    );
+info!(
+    "result: {}",
+    result
+        .reg_read_u64(RegisterX86::RAX)
+        .expect("unable to read register")
+);
 ```
 
 More complete examples can be found in the `examples/` directory.

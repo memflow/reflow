@@ -60,10 +60,11 @@ fn main() {
                 .default_value(""),
         )
         .arg(
-            Arg::with_name("output")
-                .long("output")
-                .short("o")
-                .takes_value(true),
+            Arg::with_name("param")
+                .long("param")
+                .short("p")
+                .takes_value(true)
+                .default_value(""),
         )
         .get_matches();
 
@@ -96,8 +97,11 @@ fn main() {
 
     let mut execution = Oven::new(process)
         .stack(Stack::new().ret_addr(0xDEADBEEFu64))
-        .params(Parameters::new().reg_str(RegisterX86::RCX, "name3"))
-        .entry_point((module.base + 0x113a7).into());
+        .params(Parameters::new().reg_str(
+            RegisterX86::RCX,
+            matches.value_of("param").unwrap_or_default(),
+        ))
+        .entry_point((module.base + 0x112f3).into());
     let result = execution.reflow().expect("unable to execute function");
 
     info!(
