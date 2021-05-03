@@ -1,4 +1,4 @@
-use crate::execution::{Execution64, ExecutionResult};
+use crate::execution::{ExecutionResult, ExecutionX86, ExecutionX86Arch};
 use crate::params::Parameters;
 use crate::stack::Stack;
 
@@ -37,17 +37,26 @@ impl<'a, P: Process + 'static> Oven<'a, P> {
     }
 
     pub fn reflow(&mut self) -> std::result::Result<ExecutionResult, String> {
-        self.reflow_x64()
+        match self.process.info().proc_arch {
+            ArchitectureIdent::X86(32, _) => self.reflow_x86(ExecutionX86Arch::X8632),
+            ArchitectureIdent::X86(64, _) => self.reflow_x86(ExecutionX86Arch::X8664),
+            ArchitectureIdent::X86(_, _) => unreachable!("invalid x86 bit width"),
+            ArchitectureIdent::AArch64(_) => Err("AArch64 is not supported yet".into()),
+            ArchitectureIdent::Unknown => Err("Unknown process architecture".into()),
+        }
     }
 
-    fn reflow_x64(&mut self) -> std::result::Result<ExecutionResult, String> {
+    fn reflow_x86(
+        &mut self,
+        arch: ExecutionX86Arch,
+    ) -> std::result::Result<ExecutionResult, String> {
         // step1: find module containing the address
 
         // create unicorn context and create stack
         let stack = self.stack.as_ref().map(Clone::clone).unwrap_or_default();
         let params = self.params.as_ref().map(Clone::clone).unwrap_or_default();
 
-        let mut execution = Execution64::<()>::new()?
+        let mut execution = ExecutionX86::<()>::new(arch)?
             .build_stack(&stack)?
             .build_params(&params)?
             .finalize_stack(stack.ret_addr.into())?;

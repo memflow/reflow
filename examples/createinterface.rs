@@ -1,38 +1,4 @@
 /*!
- * Executes a function which gets a string as argument,
- *
- * # Examples:
- *
- * ```ignore
- * struct table_entry {
- *     const char* name;
- *     int value;
- * };
- *
- * table_entry table[4];
- *
- * int examplefn(const char *elem) {
- *    for (int i = 0; i < sizeof(table) / sizeof(table_entry); ++i) {
- *       if (!strcmp(table[i].name, elem)) {
- *           return table[i].value;
- *       }
- *    }
- *    return -1;
- * }
- *
- * int main() {
- *     table[0] = { "name1", 1000 };
- *     table[1] = { "name2", 1001 };
- *     table[2] = { "name3", 1002 };
- *     table[3] = { "name4", 1003 };
- *
- *     int result = examplefn("name4");
- *     printf("result = %d\n", result);
- *
- *     system("PAUSE");
- *     return 0;
- * }
- * ```
  */
 use clap::*;
 use log::{info, Level};
@@ -41,7 +7,7 @@ use memflow::prelude::v1::*;
 use reflow::prelude::v1::*;
 
 fn main() {
-    let matches = App::new("string argument example")
+    let matches = App::new("createinterface example")
         .version(crate_version!())
         .author(crate_authors!())
         .arg(Arg::with_name("verbose").short("v").multiple(true))
@@ -60,11 +26,10 @@ fn main() {
                 .default_value(""),
         )
         .arg(
-            Arg::with_name("param")
-                .long("param")
-                .short("p")
-                .takes_value(true)
-                .default_value(""),
+            Arg::with_name("output")
+                .long("output")
+                .short("o")
+                .takes_value(true),
         )
         .get_matches();
 
@@ -92,20 +57,25 @@ fn main() {
         .build()
         .expect("unable to instantiate connector / os");
 
-    let mut process = os.into_process_by_name("example_stringargs.exe").unwrap();
-    let module = process.module_by_name("example_stringargs.exe").unwrap();
+    let mut process = os
+        .into_process_by_name("csgo.exe")
+        .expect("csgo.exe process not found");
+    let module = process
+        .module_by_name("engine.dll")
+        .expect("engine.dll not found");
+
+    let create_interface = process
+        .module_export_by_name(&module, "CreateInterface")
+        .expect("unable to find CreateInterface export");
 
     let mut execution = Oven::new(process)
-        .stack(Stack::new().ret_addr(0xDEADBEEFu64))
-        .params(Parameters::new().reg_str(
-            RegisterX86::RCX,
-            matches.value_of("param").unwrap_or_default(),
-        ))
-        .entry_point(module.base + 0x112f3);
+        .stack(Stack::new().ret_addr(0x1234u64))
+        .params(Parameters::new().push_u32(0).push_str("VEngineClient014"))
+        .entry_point(module.base + create_interface.offset);
 
     let result = execution.reflow().expect("unable to execute function");
     info!(
-        "result: {}",
+        "result: {:x}",
         result
             .reg_read_u64(RegisterX86::EAX)
             .expect("unable to read register") as i32

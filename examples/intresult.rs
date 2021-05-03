@@ -29,7 +29,7 @@ use memflow::prelude::v1::*;
 use reflow::prelude::v1::*;
 
 fn main() {
-    let matches = App::new("dump offsets example")
+    let matches = App::new("integer result example")
         .version(crate_version!())
         .author(crate_authors!())
         .arg(Arg::with_name("verbose").short("v").multiple(true))
@@ -84,7 +84,7 @@ fn main() {
 
     let mut execution = Oven::new(process)
         .stack(Stack::new().ret_addr(0x1234u64))
-        .entry_point((module.base + 0x110e1).into());
+        .entry_point(module.base + 0x110e1);
 
     let result = execution.reflow().expect("unable to execute function");
     info!(
