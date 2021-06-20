@@ -166,7 +166,7 @@ impl<'a, T: 'a> ExecutionX86<'a, T> {
         Ok(self)
     }
 
-    pub fn install_hooks<P: Process + 'static>(
+    pub fn install_hooks<P: 'static + Process + AsVirtualMemory>(
         mut self,
         process: &'a mut P,
     ) -> std::result::Result<Self, String> {
@@ -350,7 +350,7 @@ impl<'a, T: 'a> ExecutionX86<'a, T> {
         Ok(())
     }
 
-    pub fn map_from_process<P: Process>(
+    pub fn map_from_process<P: Process + AsVirtualMemory>(
         &mut self,
         process: &mut P,
         addr: u64,
@@ -359,7 +359,7 @@ impl<'a, T: 'a> ExecutionX86<'a, T> {
     }
 }
 
-pub fn map_from_process<P: Process>(
+pub fn map_from_process<P: Process + AsVirtualMemory>(
     emu: &unicorn::Unicorn,
     process: &mut P,
     addr: u64,

@@ -4,14 +4,14 @@ use crate::stack::Stack;
 
 use memflow::prelude::v1::*;
 
-pub struct Oven<'a, P: Process> {
+pub struct Oven<'a, P: Process + AsVirtualMemory> {
     process: P,
     stack: Option<Stack>,
     params: Option<Parameters<'a>>,
     entry_point: Address,
 }
 
-impl<'a, P: Process + 'static> Oven<'a, P> {
+impl<'a, P: 'static + Process + AsVirtualMemory> Oven<'a, P> {
     pub fn new(process: P) -> Self {
         Self {
             process,
