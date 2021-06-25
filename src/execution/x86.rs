@@ -166,25 +166,28 @@ impl<'a, T: 'a> ExecutionX86<'a, T> {
         Ok(self)
     }
 
-    pub fn install_hooks<P: 'static + Process + AsVirtualMemory>(
+    pub fn install_hooks<V: VirtualMemory + 'static>(
         mut self,
-        process: &'a mut P,
+        process: &'a mut V,
     ) -> std::result::Result<Self, String> {
         // disasm code hook
-        let cs = Capstone::new()
-            .x86()
-            .mode(arch::x86::ArchMode::Mode64)
-            .syntax(arch::x86::ArchSyntax::Intel)
-            .detail(true)
-            .build()
-            .map_err(|_| "unable to create capstone context".to_string())?;
-        self.emu
-            .add_code_hook(CodeHookType::CODE, 1, 0, move |uc, addr, size| {
-                let instructions = uc.mem_read_as_vec(addr, size as usize).unwrap();
-                let result = cs.disasm_all(&instructions, addr).unwrap();
-                debug!("{}", result.to_string().trim_end());
-            })
-            .map_err(|_| "unable to create unicorn code hook".to_string())?;
+
+        if log::log_enabled!(log::Level::Debug) {
+            let cs = Capstone::new()
+                .x86()
+                .mode(arch::x86::ArchMode::Mode64)
+                .syntax(arch::x86::ArchSyntax::Intel)
+                .detail(true)
+                .build()
+                .map_err(|_| "unable to create capstone context".to_string())?;
+            self.emu
+                .add_code_hook(CodeHookType::CODE, 1, 0, move |uc, addr, size| {
+                    let instructions = uc.mem_read_as_vec(addr, size as usize).unwrap();
+                    let result = cs.disasm_all(&instructions, addr).unwrap();
+                    debug!("{}", result.to_string().trim_end());
+                })
+                .map_err(|_| "unable to create unicorn code hook".to_string())?;
+        }
 
         // fetch prot hook
         // TODO: implement real protection from memory
@@ -350,26 +353,23 @@ impl<'a, T: 'a> ExecutionX86<'a, T> {
         Ok(())
     }
 
-    pub fn map_from_process<P: Process + AsVirtualMemory>(
+    pub fn map_from_process(
         &mut self,
-        process: &mut P,
+        process: &mut impl VirtualMemory,
         addr: u64,
     ) -> std::result::Result<(), String> {
         map_from_process(self.emu.emu(), process, addr)
     }
 }
 
-pub fn map_from_process<P: Process + AsVirtualMemory>(
+pub fn map_from_process(
     emu: &unicorn::Unicorn,
-    process: &mut P,
+    process: &mut impl VirtualMemory,
     addr: u64,
 ) -> std::result::Result<(), String> {
     let page_size = emu.query(unicorn::Query::PAGE_SIZE).unwrap();
     let page_addr = Address::from(addr).as_page_aligned(page_size);
-    let page = process
-        .virt_mem()
-        .virt_read_raw(page_addr, page_size)
-        .unwrap();
+    let page = process.virt_read_raw(page_addr, page_size).unwrap();
 
     // TODO: copy perms from process
     emu.mem_map(page_addr.as_u64(), page_size, Protection::ALL)

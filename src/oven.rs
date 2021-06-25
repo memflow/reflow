@@ -4,17 +4,31 @@ use crate::stack::Stack;
 
 use memflow::prelude::v1::*;
 
-pub struct Oven<'a, P: Process + AsVirtualMemory> {
-    process: P,
+pub struct Oven<'a, V: VirtualMemory> {
+    mem: V,
+    arch: ArchitectureIdent,
     stack: Option<Stack>,
     params: Option<Parameters<'a>>,
     entry_point: Address,
 }
 
-impl<'a, P: 'static + Process + AsVirtualMemory> Oven<'a, P> {
+impl<'a, P: 'static + Process + VirtualMemory> Oven<'a, P> {
     pub fn new(process: P) -> Self {
         Self {
-            process,
+            arch: process.info().proc_arch,
+            mem: process,
+            stack: None,
+            params: None,
+            entry_point: Address::NULL,
+        }
+    }
+}
+
+impl<'a, V: 'static + VirtualMemory> Oven<'a, V> {
+    pub fn new_with_arch(mem: V, arch: ArchitectureIdent) -> Self {
+        Self {
+            mem,
+            arch,
             stack: None,
             params: None,
             entry_point: Address::NULL,
@@ -37,7 +51,7 @@ impl<'a, P: 'static + Process + AsVirtualMemory> Oven<'a, P> {
     }
 
     pub fn reflow(&mut self) -> std::result::Result<ExecutionResult, String> {
-        match self.process.info().proc_arch {
+        match self.arch {
             ArchitectureIdent::X86(32, _) => self.reflow_x86(ExecutionX86Arch::X8632),
             ArchitectureIdent::X86(64, _) => self.reflow_x86(ExecutionX86Arch::X8664),
             ArchitectureIdent::X86(_, _) => unreachable!("invalid x86 bit width"),
@@ -62,10 +76,10 @@ impl<'a, P: 'static + Process + AsVirtualMemory> Oven<'a, P> {
             .finalize_stack(stack.ret_addr.into())?;
 
         // read initial code page from process
-        execution.map_from_process(&mut self.process, self.entry_point.as_u64())?;
+        execution.map_from_process(&mut self.mem, self.entry_point.as_u64())?;
 
         // install hooks
-        execution = execution.install_hooks(&mut self.process)?;
+        execution = execution.install_hooks(&mut self.mem)?;
 
         // run emulator
         execution.execute(self.entry_point, stack.ret_addr.into())
