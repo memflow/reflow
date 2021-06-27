@@ -4,9 +4,9 @@ use clap::*;
 use log::{info, Level};
 
 use memflow::prelude::v1::*;
-use reflow::prelude::v1::*;
+use reflow::prelude::v1::{Result, *};
 
-fn main() {
+fn main() -> Result<()> {
     let matches = App::new("createinterface example")
         .version(crate_version!())
         .author(crate_authors!())
@@ -68,16 +68,20 @@ fn main() {
         .module_export_by_name(&module, "CreateInterface")
         .expect("unable to find CreateInterface export");
 
-    let mut execution = Oven::new(process)
-        .stack(Stack::new().ret_addr(0x1234u64))
-        .params(Parameters::new().push_u32(0).push_str("VEngineClient014"))
-        .entry_point(module.base + create_interface.offset);
+    let mut execution = new_oven(&mut process)?;
 
-    let result = execution.reflow().expect("unable to execute function");
+    let result = execution
+        .stack(Stack::new().ret_addr(0x1234u64))?
+        .params(Parameters::new().push_u32(0).push_str("VEngineClient014"))?
+        .entry_point(module.base + create_interface.offset)?
+        .reflow()?;
+
     info!(
         "result: {:x}",
         result
             .reg_read_u64(RegisterX86::EAX)
             .expect("unable to read register") as i32
     );
+
+    Ok(())
 }

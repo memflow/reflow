@@ -38,9 +38,9 @@ use clap::*;
 use log::{info, Level};
 
 use memflow::prelude::v1::*;
-use reflow::prelude::v1::*;
+use reflow::prelude::v1::{Result, *};
 
-fn main() {
+fn main() -> Result<()> {
     let matches = App::new("string argument example")
         .version(crate_version!())
         .author(crate_authors!())
@@ -95,19 +95,23 @@ fn main() {
     let mut process = os.into_process_by_name("example_stringargs.exe").unwrap();
     let module = process.module_by_name("example_stringargs.exe").unwrap();
 
-    let mut execution = Oven::new(process)
-        .stack(Stack::new().ret_addr(0xDEADBEEFu64))
+    let mut execution = new_oven(&mut process)?;
+
+    let result = execution
+        .stack(Stack::new().ret_addr(0xDEADBEEFu64))?
         .params(Parameters::new().reg_str(
             RegisterX86::RCX,
             matches.value_of("param").unwrap_or_default(),
-        ))
-        .entry_point(module.base + 0x112f3);
+        ))?
+        .entry_point(module.base + 0x112f3)?
+        .reflow()?;
 
-    let result = execution.reflow().expect("unable to execute function");
     info!(
         "result: {}",
         result
             .reg_read_u64(RegisterX86::EAX)
             .expect("unable to read register") as i32
     );
+
+    Ok(())
 }

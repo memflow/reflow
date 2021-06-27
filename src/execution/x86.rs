@@ -1,8 +1,10 @@
 use super::ExecutionResult;
+use crate::oven::Oven;
 use crate::params::{Parameter, Parameters};
+use crate::result::Result;
 use crate::stack::Stack;
 
-use std::{marker::PhantomData, mem::size_of};
+use std::mem::size_of;
 
 use log::{debug, trace};
 
@@ -52,39 +54,57 @@ pub struct ExecutionX86<'a, T: 'a> {
     arch: ExecutionX86Arch,
     pub(crate) emu: unicorn::CpuX86,
     data_base: u64,
-    _phantom: PhantomData<&'a T>,
+    ret_addr: Address,
+    entry_point: Address,
+    mem: &'a mut T,
 }
 
-impl<'a, T: 'a> ExecutionX86<'a, T> {
-    pub fn new(arch: ExecutionX86Arch) -> std::result::Result<Self, String> {
-        let emu = CpuX86::new(arch.unicorn_mode()).map_err(|_| "failed to instantiate emulator")?;
-        let data_base = arch.max_writable_addr() - DATA_SIZE as u64 + 1;
-        Ok(Self {
-            arch,
-            emu,
-            data_base,
-            _phantom: PhantomData::default(),
-        })
-    }
+impl<'a, T: 'a + VirtualMemory> Oven<'a> for ExecutionX86<'a, T> {
+    fn set_stack(&mut self, stack: Stack) -> Result<()> {
+        self.data_base = self.arch.max_writable_addr() - DATA_SIZE as u64 + 1;
 
-    pub fn build_stack(self, stack: &Stack) -> std::result::Result<Self, String> {
-        // initialize memory for stack
-        self.emu
-            .mem_map(
+        println!("{:x} | {:x}", stack.base, stack.size);
+
+        // initialize memory for stack if needed
+        if self
+            .emu
+            .mem_protect(
                 stack.base as u64,
                 stack.size as usize,
                 Protection::READ | Protection::WRITE,
             )
-            .map_err(|_| "unable to map memory at stack base")?;
+            .is_err()
+        {
+            self.emu
+                .mem_map(
+                    stack.base as u64,
+                    stack.size as usize,
+                    Protection::READ | Protection::WRITE,
+                )
+                .map_err(|e| {
+                    println!("{}", e);
+                    "unable to map memory at stack base"
+                })?;
+        }
 
         // initialize high memory for data stored on stack / regs
-        self.emu
-            .mem_map(
-                self.data_base,
+        if self
+            .emu
+            .mem_protect(
+                self.data_base as u64,
                 DATA_SIZE,
                 Protection::READ | Protection::WRITE,
             )
-            .map_err(|_| "unable to map high memory for data references")?;
+            .is_err()
+        {
+            self.emu
+                .mem_map(
+                    self.data_base,
+                    DATA_SIZE,
+                    Protection::READ | Protection::WRITE,
+                )
+                .map_err(|_| "unable to map high memory for data references")?;
+        }
 
         // TODO: allow reexecution and 0 stack
 
@@ -95,10 +115,12 @@ impl<'a, T: 'a> ExecutionX86<'a, T> {
             .reg_write(self.arch.reg_sp(), stack_start_addr)
             .map_err(|_| "unable to write rsp register")?;
 
-        Ok(self)
+        self.ret_addr = stack.ret_addr.into();
+
+        Ok(())
     }
 
-    pub fn build_params(mut self, params: &Parameters) -> std::result::Result<Self, String> {
+    fn set_params(&mut self, params: Parameters<'a>) -> Result<()> {
         for param in params.entries.iter() {
             match param {
                 Parameter::Push32(value) => {
@@ -114,6 +136,9 @@ impl<'a, T: 'a> ExecutionX86<'a, T> {
                 Parameter::PushString(value) => {
                     let nullstr = format!("{}\0", value);
                     self.push_data_ref_to_stack(nullstr.as_bytes())?;
+                }
+                Parameter::PushBuf(size) => {
+                    self.push_buf_to_stack(*size)?;
                 }
 
                 Parameter::Reg32(reg, value) => {
@@ -134,42 +159,53 @@ impl<'a, T: 'a> ExecutionX86<'a, T> {
                     let nullstr = format!("{}\0", value);
                     self.write_data_to_reg(*reg, nullstr.as_bytes())?;
                 }
+                Parameter::RegBuf(reg, size) => {
+                    self.buf_to_reg(*reg, *size)?;
+                }
+
+                Parameter::MovReg(from, to) => {
+                    self.mov_reg(*from, *to)?;
+                }
             }
         }
 
-        Ok(self)
+        Ok(())
     }
 
-    pub fn finalize_stack(self, ret_addr: Address) -> std::result::Result<Self, String> {
+    fn set_entry_point(&mut self, entry_point: Address) -> Result<()> {
+        self.entry_point = entry_point;
+        Ok(())
+    }
+
+    fn reflow<'b>(&'b mut self) -> Result<ExecutionResult<'b>> {
+        self.finalize_stack()?;
+        //self.map_from_mem(&mut self.mem, self.entry_point.as_u64())?;
+        self.execute()
+    }
+}
+
+impl<'a, T: 'a + VirtualMemory> ExecutionX86<'a, T> {
+    pub fn new(arch: ExecutionX86Arch, mem: &'a mut T) -> Result<Self> {
+        let emu = CpuX86::new(arch.unicorn_mode()).map_err(|_| "failed to instantiate emulator")?;
+        let data_base = arch.max_writable_addr() - DATA_SIZE as u64 + 1;
+        Self {
+            arch,
+            emu,
+            data_base,
+            ret_addr: Address::NULL,
+            entry_point: Address::NULL,
+            mem,
+        }
+        .install_hooks()
+    }
+
+    pub fn finalize_stack(&mut self) -> Result<()> {
         // push final ret addr, this execution must be called after stack has been setup
-        self.push_to_stack(ret_addr.as_u64())?;
-
-        // clear entire ret_addr page with 0s
-        let page_size = self
-            .emu
-            .query(unicorn::Query::PAGE_SIZE)
-            .map_err(|_| "unable to query unicorn page size")?;
-        self.emu
-            .mem_map(
-                ret_addr.as_page_aligned(page_size).as_u64(),
-                page_size,
-                Protection::ALL,
-            )
-            .map_err(|_| "unable to map memory".to_string())?;
-        self.emu
-            .mem_write(
-                ret_addr.as_page_aligned(page_size).as_u64(),
-                vec![0u8; page_size].as_bytes(),
-            )
-            .map_err(|_| "unable to write memory".to_string())?;
-
-        Ok(self)
+        self.push_to_stack(self.ret_addr.as_u64())?;
+        Ok(())
     }
 
-    pub fn install_hooks<V: VirtualMemory + 'static>(
-        mut self,
-        process: &'a mut V,
-    ) -> std::result::Result<Self, String> {
+    pub fn install_hooks(mut self) -> Result<Self> {
         // disasm code hook
 
         if log::log_enabled!(log::Level::Debug) {
@@ -199,7 +235,7 @@ impl<'a, T: 'a> ExecutionX86<'a, T> {
             .map_err(|_| "unable to create unicorn mem prot hook".to_string())?;
 
         // hooks for data reload
-        let process_ptr = process as *mut _;
+        let mem_ptr = self.mem as *mut _ as *mut ();
         self.emu
             .add_mem_hook(
                 MemHookType::MEM_FETCH_UNMAPPED,
@@ -211,8 +247,8 @@ impl<'a, T: 'a> ExecutionX86<'a, T> {
                     // # Safety
                     // This is safe because the `Process` does not outlive the underlying `emu` context.
                     // Callbacks will only be executed for a given `emu` and as long as it exists.
-                    let proc = unsafe { &mut *process_ptr };
-                    map_from_process(emu, proc, addr).ok();
+                    let mem = unsafe { &mut *(mem_ptr as *mut T) };
+                    map_from_mem(emu, mem, addr).ok();
 
                     true
                 },
@@ -230,15 +266,14 @@ impl<'a, T: 'a> ExecutionX86<'a, T> {
                     // # Safety
                     // This is safe because the `Process` does not outlive the underlying `emu` context.
                     // Callbacks will only be executed for a given `emu` and as long as it exists.
-                    let proc = unsafe { &mut *process_ptr };
-                    map_from_process(emu, proc, addr).ok();
+                    let mem = unsafe { &mut *(mem_ptr as *mut T) };
+                    map_from_mem(emu, mem, addr).ok();
 
                     true
                 },
             )
             .map_err(|_| "unable to create unicorn read unmapped hook".to_string())?;
 
-        let process_ptr = process as *mut _;
         self.emu
             .add_mem_hook(
                 MemHookType::MEM_WRITE_UNMAPPED,
@@ -250,8 +285,8 @@ impl<'a, T: 'a> ExecutionX86<'a, T> {
                     // # Safety
                     // This is safe because the `Process` does not outlive the underlying `emu` context.
                     // Callbacks will only be executed for a given `emu` and as long as it exists.
-                    let proc = unsafe { &mut *process_ptr };
-                    map_from_process(emu, proc, addr).ok();
+                    let mem = unsafe { &mut *(mem_ptr as *mut T) };
+                    map_from_mem(emu, mem, addr).ok();
 
                     true
                 },
@@ -276,18 +311,14 @@ impl<'a, T: 'a> ExecutionX86<'a, T> {
         Ok(self)
     }
 
-    pub fn execute(
-        self,
-        entry_point: Address,
-        ret_addr: Address,
-    ) -> std::result::Result<ExecutionResult, String> {
+    pub fn execute<'b>(&'b mut self) -> Result<ExecutionResult<'b>> {
         self.emu
-            .emu_start(entry_point.as_u64(), ret_addr.as_u64(), 0, 0)
+            .emu_start(self.entry_point.as_u64(), self.ret_addr.as_u64(), 0, 0)
             .map_err(|err| format!("unable to execute unicorn context: {}", err))?;
-        Ok(ExecutionResult::new(self.emu))
+        Ok(ExecutionResult::new(&mut self.emu))
     }
 
-    fn push_to_stack(&self, value: u64) -> std::result::Result<(), &'static str> {
+    fn push_to_stack(&self, value: u64) -> Result<()> {
         let mut sp = self
             .emu
             .emu()
@@ -321,7 +352,7 @@ impl<'a, T: 'a> ExecutionX86<'a, T> {
         Ok(())
     }
 
-    fn push_data_ref_to_stack(&mut self, data: &[u8]) -> std::result::Result<(), String> {
+    fn push_data_ref_to_stack(&mut self, data: &[u8]) -> Result<()> {
         // store in data section
         self.emu
             .mem_write(self.data_base, data)
@@ -334,11 +365,15 @@ impl<'a, T: 'a> ExecutionX86<'a, T> {
         Ok(())
     }
 
-    fn write_data_to_reg(
-        &mut self,
-        reg: RegisterX86,
-        data: &[u8],
-    ) -> std::result::Result<(), String> {
+    fn push_buf_to_stack(&mut self, size: usize) -> Result<()> {
+        // push ptr ref to stack
+        self.push_to_stack(self.data_base)?;
+
+        self.data_base += size as u64;
+        Ok(())
+    }
+
+    fn write_data_to_reg(&mut self, reg: RegisterX86, data: &[u8]) -> Result<()> {
         // store in data section
         self.emu
             .mem_write(self.data_base, data)
@@ -353,27 +388,46 @@ impl<'a, T: 'a> ExecutionX86<'a, T> {
         Ok(())
     }
 
-    pub fn map_from_process(
-        &mut self,
-        process: &mut impl VirtualMemory,
-        addr: u64,
-    ) -> std::result::Result<(), String> {
-        map_from_process(self.emu.emu(), process, addr)
+    fn buf_to_reg(&mut self, reg: RegisterX86, size: usize) -> Result<()> {
+        // push ptr ref to stack
+        self.emu
+            .reg_write(reg, self.data_base)
+            .map_err(|_| "unable to write register")?;
+
+        self.data_base += size as u64;
+        Ok(())
+    }
+
+    fn mov_reg(&mut self, from: RegisterX86, to: RegisterX86) -> Result<()> {
+        let val = self
+            .emu
+            .reg_read(from)
+            .map_err(|_| "unable to read register")?;
+
+        self.emu
+            .reg_write(to, val)
+            .map_err(|_| "unable to write register")?;
+
+        Ok(())
+    }
+
+    pub fn map_from_mem(&mut self, process: &mut impl VirtualMemory, addr: u64) -> Result<()> {
+        map_from_mem(self.emu.emu(), process, addr)
     }
 }
 
-pub fn map_from_process(
+pub fn map_from_mem(
     emu: &unicorn::Unicorn,
     process: &mut impl VirtualMemory,
     addr: u64,
-) -> std::result::Result<(), String> {
+) -> Result<()> {
     let page_size = emu.query(unicorn::Query::PAGE_SIZE).unwrap();
     let page_addr = Address::from(addr).as_page_aligned(page_size);
     let page = process.virt_read_raw(page_addr, page_size).unwrap();
 
     // TODO: copy perms from process
     emu.mem_map(page_addr.as_u64(), page_size, Protection::ALL)
-        .map_err(|_| "unable to map memory".to_string())?;
+        .map_err(|_| "unable to map memory")?;
     emu.mem_write(page_addr.as_u64(), &page)
-        .map_err(|_| "unable to write memory".to_string())
+        .map_err(|_| "unable to write memory".into())
 }
