@@ -63,8 +63,6 @@ impl<'a, T: 'a + VirtualMemory> Oven<'a> for ExecutionX86<'a, T> {
     fn set_stack(&mut self, stack: Stack) -> Result<()> {
         self.data_base = self.arch.max_writable_addr() - DATA_SIZE as u64 + 1;
 
-        println!("{:x} | {:x}", stack.base, stack.size);
-
         // initialize memory for stack if needed
         if self
             .emu
