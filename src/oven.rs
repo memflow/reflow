@@ -34,14 +34,14 @@ pub trait OvenBuilder<'a>: Oven<'a> {
 
 impl<'a, T: Oven<'a> + ?Sized> OvenBuilder<'a> for T {}
 
-pub fn new_oven<'a, P: 'a + Process + VirtualMemory>(
+pub fn new_oven<'a, P: 'a + Process + MemoryView>(
     process: &'a mut P,
 ) -> Result<Box<dyn Oven<'a> + 'a>> {
     let arch = process.info().proc_arch;
     new_oven_with_arch(process, arch)
 }
 
-pub fn new_oven_with_arch<'a, V: 'a + VirtualMemory>(
+pub fn new_oven_with_arch<'a, V: 'a + MemoryView>(
     mem: &'a mut V,
     arch: ArchitectureIdent,
 ) -> Result<Box<dyn Oven<'a> + 'a>> {
@@ -50,11 +50,11 @@ pub fn new_oven_with_arch<'a, V: 'a + VirtualMemory>(
         ArchitectureIdent::X86(64, _) => x86_oven(ExecutionX86Arch::X8664, mem),
         ArchitectureIdent::X86(_, _) => unreachable!("invalid x86 bit width"),
         ArchitectureIdent::AArch64(_) => Err("AArch64 is not supported yet".into()),
-        ArchitectureIdent::Unknown => Err("Unknown process architecture".into()),
+        ArchitectureIdent::Unknown(_) => Err("Unknown process architecture".into()),
     }
 }
 
-fn x86_oven<'a, V: 'a + VirtualMemory>(
+fn x86_oven<'a, V: 'a + MemoryView>(
     arch: ExecutionX86Arch,
     mem: &'a mut V,
 ) -> Result<Box<dyn Oven<'a> + 'a>> {

@@ -59,7 +59,7 @@ pub struct ExecutionX86<'a, T: 'a> {
     mem: &'a mut T,
 }
 
-impl<'a, T: 'a + VirtualMemory> Oven<'a> for ExecutionX86<'a, T> {
+impl<'a, T: 'a + MemoryView> Oven<'a> for ExecutionX86<'a, T> {
     fn set_stack(&mut self, stack: Stack) -> Result<()> {
         self.data_base = self.arch.max_writable_addr() - DATA_SIZE as u64 + 1;
 
@@ -177,12 +177,12 @@ impl<'a, T: 'a + VirtualMemory> Oven<'a> for ExecutionX86<'a, T> {
 
     fn reflow<'b>(&'b mut self) -> Result<ExecutionResult<'b>> {
         self.finalize_stack()?;
-        //self.map_from_mem(&mut self.mem, self.entry_point.as_u64())?;
+        //self.map_from_mem(&mut self.mem, self.entry_point.to_umem())?;
         self.execute()
     }
 }
 
-impl<'a, T: 'a + VirtualMemory> ExecutionX86<'a, T> {
+impl<'a, T: 'a + MemoryView> ExecutionX86<'a, T> {
     pub fn new(arch: ExecutionX86Arch, mem: &'a mut T) -> Result<Self> {
         let emu = CpuX86::new(arch.unicorn_mode()).map_err(|_| "failed to instantiate emulator")?;
         let data_base = arch.max_writable_addr() - DATA_SIZE as u64 + 1;
@@ -199,7 +199,7 @@ impl<'a, T: 'a + VirtualMemory> ExecutionX86<'a, T> {
 
     pub fn finalize_stack(&mut self) -> Result<()> {
         // push final ret addr, this execution must be called after stack has been setup
-        self.push_to_stack(self.ret_addr.as_u64())?;
+        self.push_to_stack(self.ret_addr.to_umem())?;
         Ok(())
     }
 
@@ -311,7 +311,7 @@ impl<'a, T: 'a + VirtualMemory> ExecutionX86<'a, T> {
 
     pub fn execute<'b>(&'b mut self) -> Result<ExecutionResult<'b>> {
         self.emu
-            .emu_start(self.entry_point.as_u64(), self.ret_addr.as_u64(), 0, 0)
+            .emu_start(self.entry_point.to_umem(), self.ret_addr.to_umem(), 0, 0)
             .map_err(|err| format!("unable to execute unicorn context: {}", err))?;
         Ok(ExecutionResult::new(&mut self.emu))
     }
@@ -409,23 +409,23 @@ impl<'a, T: 'a + VirtualMemory> ExecutionX86<'a, T> {
         Ok(())
     }
 
-    pub fn map_from_mem(&mut self, process: &mut impl VirtualMemory, addr: u64) -> Result<()> {
+    pub fn map_from_mem(&mut self, process: &mut impl MemoryView, addr: u64) -> Result<()> {
         map_from_mem(self.emu.emu(), process, addr)
     }
 }
 
 pub fn map_from_mem(
     emu: &unicorn::Unicorn,
-    process: &mut impl VirtualMemory,
+    process: &mut impl MemoryView,
     addr: u64,
 ) -> Result<()> {
     let page_size = emu.query(unicorn::Query::PAGE_SIZE).unwrap();
     let page_addr = Address::from(addr).as_page_aligned(page_size);
-    let page = process.virt_read_raw(page_addr, page_size).unwrap();
+    let page = process.read_raw(page_addr, page_size).unwrap();
 
     // TODO: copy perms from process
-    emu.mem_map(page_addr.as_u64(), page_size, Protection::ALL)
+    emu.mem_map(page_addr.to_umem(), page_size, Protection::ALL)
         .map_err(|_| "unable to map memory")?;
-    emu.mem_write(page_addr.as_u64(), &page)
+    emu.mem_write(page_addr.to_umem(), &page)
         .map_err(|_| "unable to write memory".into())
 }
