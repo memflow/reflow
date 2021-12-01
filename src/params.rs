@@ -6,11 +6,14 @@ pub enum Parameter<'a> {
     Push64(u64),
     PushStr(&'a str),
     PushString(String),
+    PushBuf(usize),
     // TODO: Pod objects?
     Reg32(RegisterX86, u32),
     Reg64(RegisterX86, u64),
     RegStr(RegisterX86, &'a str),
     RegString(RegisterX86, String),
+    RegBuf(RegisterX86, usize),
+    MovReg(RegisterX86, RegisterX86),
 }
 
 #[derive(Debug, Clone)]
@@ -45,6 +48,11 @@ impl<'a> Parameters<'a> {
         self
     }
 
+    pub fn push_buf(mut self, size: usize) -> Self {
+        self.entries.push(Parameter::PushBuf(size));
+        self
+    }
+
     pub fn reg_u32(mut self, reg: RegisterX86, value: u32) -> Self {
         self.entries.push(Parameter::Reg32(reg, value));
         self
@@ -62,6 +70,16 @@ impl<'a> Parameters<'a> {
 
     pub fn reg_string(mut self, reg: RegisterX86, value: String) -> Self {
         self.entries.push(Parameter::RegString(reg, value));
+        self
+    }
+
+    pub fn reg_buf(mut self, reg: RegisterX86, size: usize) -> Self {
+        self.entries.push(Parameter::RegBuf(reg, size));
+        self
+    }
+
+    pub fn mov_reg(mut self, from: RegisterX86, to: RegisterX86) -> Self {
+        self.entries.push(Parameter::MovReg(from, to));
         self
     }
 }

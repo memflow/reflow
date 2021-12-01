@@ -1,87 +1,64 @@
 use crate::execution::{ExecutionResult, ExecutionX86, ExecutionX86Arch};
 use crate::params::Parameters;
+use crate::result::Result;
 use crate::stack::Stack;
 
 use memflow::prelude::v1::*;
 
-pub struct Oven<'a, V: VirtualMemory> {
-    mem: V,
+pub trait Oven<'a> {
+    fn set_stack(&mut self, stack: Stack) -> Result<()>;
+
+    fn set_params(&mut self, params: Parameters<'a>) -> Result<()>;
+
+    fn set_entry_point(&mut self, entry_point: Address) -> Result<()>;
+
+    fn reflow<'b>(&'b mut self) -> Result<ExecutionResult<'b>>;
+}
+
+pub trait OvenBuilder<'a>: Oven<'a> {
+    fn stack(&mut self, stack: Stack) -> Result<&mut Self> {
+        Oven::set_stack(self, stack)?;
+        Ok(self)
+    }
+
+    fn params(&mut self, params: Parameters<'a>) -> Result<&mut Self> {
+        Oven::set_params(self, params)?;
+        Ok(self)
+    }
+
+    fn entry_point(&mut self, entry_point: Address) -> Result<&mut Self> {
+        Oven::set_entry_point(self, entry_point)?;
+        Ok(self)
+    }
+}
+
+impl<'a, T: Oven<'a> + ?Sized> OvenBuilder<'a> for T {}
+
+pub fn new_oven<'a, P: 'a + Process + VirtualMemory>(
+    process: &'a mut P,
+) -> Result<Box<dyn Oven<'a> + 'a>> {
+    let arch = process.info().proc_arch;
+    new_oven_with_arch(process, arch)
+}
+
+pub fn new_oven_with_arch<'a, V: 'a + VirtualMemory>(
+    mem: &'a mut V,
     arch: ArchitectureIdent,
-    stack: Option<Stack>,
-    params: Option<Parameters<'a>>,
-    entry_point: Address,
-}
-
-impl<'a, P: 'static + Process + VirtualMemory> Oven<'a, P> {
-    pub fn new(process: P) -> Self {
-        Self {
-            arch: process.info().proc_arch,
-            mem: process,
-            stack: None,
-            params: None,
-            entry_point: Address::NULL,
-        }
+) -> Result<Box<dyn Oven<'a> + 'a>> {
+    match arch {
+        ArchitectureIdent::X86(32, _) => x86_oven(ExecutionX86Arch::X8632, mem),
+        ArchitectureIdent::X86(64, _) => x86_oven(ExecutionX86Arch::X8664, mem),
+        ArchitectureIdent::X86(_, _) => unreachable!("invalid x86 bit width"),
+        ArchitectureIdent::AArch64(_) => Err("AArch64 is not supported yet".into()),
+        ArchitectureIdent::Unknown => Err("Unknown process architecture".into()),
     }
 }
 
-impl<'a, V: 'static + VirtualMemory> Oven<'a, V> {
-    pub fn new_with_arch(mem: V, arch: ArchitectureIdent) -> Self {
-        Self {
-            mem,
-            arch,
-            stack: None,
-            params: None,
-            entry_point: Address::NULL,
-        }
-    }
+fn x86_oven<'a, V: 'a + VirtualMemory>(
+    arch: ExecutionX86Arch,
+    mem: &'a mut V,
+) -> Result<Box<dyn Oven<'a> + 'a>> {
+    let execution = ExecutionX86::<V>::new(arch, mem)?;
 
-    pub fn stack(mut self, stack: Stack) -> Self {
-        self.stack = Some(stack);
-        self
-    }
-
-    pub fn params(mut self, params: Parameters<'a>) -> Self {
-        self.params = Some(params);
-        self
-    }
-
-    pub fn entry_point(mut self, entry_point: Address) -> Self {
-        self.entry_point = entry_point;
-        self
-    }
-
-    pub fn reflow(&mut self) -> std::result::Result<ExecutionResult, String> {
-        match self.arch {
-            ArchitectureIdent::X86(32, _) => self.reflow_x86(ExecutionX86Arch::X8632),
-            ArchitectureIdent::X86(64, _) => self.reflow_x86(ExecutionX86Arch::X8664),
-            ArchitectureIdent::X86(_, _) => unreachable!("invalid x86 bit width"),
-            ArchitectureIdent::AArch64(_) => Err("AArch64 is not supported yet".into()),
-            ArchitectureIdent::Unknown => Err("Unknown process architecture".into()),
-        }
-    }
-
-    fn reflow_x86(
-        &mut self,
-        arch: ExecutionX86Arch,
-    ) -> std::result::Result<ExecutionResult, String> {
-        // step1: find module containing the address
-
-        // create unicorn context and create stack
-        let stack = self.stack.as_ref().map(Clone::clone).unwrap_or_default();
-        let params = self.params.as_ref().map(Clone::clone).unwrap_or_default();
-
-        let mut execution = ExecutionX86::<()>::new(arch)?
-            .build_stack(&stack)?
-            .build_params(&params)?
-            .finalize_stack(stack.ret_addr.into())?;
-
-        // read initial code page from process
-        execution.map_from_process(&mut self.mem, self.entry_point.as_u64())?;
-
-        // install hooks
-        execution = execution.install_hooks(&mut self.mem)?;
-
-        // run emulator
-        execution.execute(self.entry_point, stack.ret_addr.into())
-    }
+    Ok(Box::new(execution))
 }
