@@ -41,30 +41,30 @@ use memflow::prelude::v1::*;
 use reflow::prelude::v1::{Result, *};
 
 fn main() -> Result<()> {
-    let matches = App::new("string argument example")
+    let matches = Command::new("string argument example")
         .version(crate_version!())
         .author(crate_authors!())
-        .arg(Arg::with_name("verbose").short("v").multiple(true))
+        .arg(Arg::new("verbose").short('v').multiple_occurrences(true))
         .arg(
-            Arg::with_name("connector")
+            Arg::new("connector")
                 .long("connector")
-                .short("c")
+                .short('c')
                 .takes_value(true)
                 .required(true),
         )
         .arg(
-            Arg::with_name("args")
+            Arg::new("args")
                 .long("args")
-                .short("a")
+                .short('a')
                 .takes_value(true)
                 .default_value(""),
         )
         .arg(
-            Arg::with_name("param")
+            Arg::new("param")
                 .long("param")
-                .short("p")
+                .short('p')
                 .takes_value(true)
-                .default_value(""),
+                .required(false),
         )
         .get_matches();
 
@@ -76,18 +76,20 @@ fn main() -> Result<()> {
         4 => Level::Trace,
         _ => Level::Trace,
     };
-
-    simple_logger::SimpleLogger::new()
-        .with_level(level.to_level_filter())
-        .init()
-        .unwrap();
+    simplelog::TermLogger::init(
+        level.to_level_filter(),
+        simplelog::Config::default(),
+        simplelog::TerminalMode::Stdout,
+        simplelog::ColorChoice::Auto,
+    )
+    .unwrap();
 
     // build connector + os
     let inventory = Inventory::scan();
     let os = inventory
         .builder()
         .connector(matches.value_of("connector").unwrap())
-        .args(Args::parse(matches.value_of("args").unwrap()).expect("unable to parse args"))
+        .args(str::parse(matches.value_of("args").unwrap()).expect("unable to parse args"))
         .os("win32")
         .build()
         .expect("unable to instantiate connector / os");
@@ -95,23 +97,38 @@ fn main() -> Result<()> {
     let mut process = os.into_process_by_name("example_stringargs.exe").unwrap();
     let module = process.module_by_name("example_stringargs.exe").unwrap();
 
-    let mut execution = new_oven(&mut process)?;
-
-    let result = execution
+    let arch = process.info().proc_arch;
+    let mut execution = Oven::new(arch, &mut process).expect("unable to create oven");
+    execution
         .stack(Stack::new().ret_addr(0xDEADBEEFu64))?
-        .params(Parameters::new().reg_str(
-            RegisterX86::RCX,
-            matches.value_of("param").unwrap_or_default(),
-        ))?
-        .entry_point(module.base + 0x112f3)?
-        .reflow()?;
+        .entry_point(module.base + 0x112f3)?;
 
-    info!(
-        "result: {}",
-        result
+    if matches.is_present("param") {
+        // just execute the oven with the 'param' argument
+        let param = matches.value_of("param").unwrap_or_default();
+        execution
+            .params(Parameters::new().reg_str(RegisterX86::RCX, param))?
+            .reflow()
+            .expect("unable to reflow function");
+
+        let result = execution
             .reg_read_u64(RegisterX86::EAX)
-            .expect("unable to read register") as i32
-    );
+            .expect("unable to read register") as i32;
+        info!("result for '{}': {}", param, result);
+    } else {
+        // execute the oven with all possible parameter values
+        for param in vec!["name1", "name2", "name3", "name4", "name5"].into_iter() {
+            execution
+                .params(Parameters::new().reg_str(RegisterX86::RCX, param))?
+                .reflow()
+                .expect("unable to reflow function");
+
+            let result = execution
+                .reg_read_u64(RegisterX86::EAX)
+                .expect("unable to read register") as i32;
+            info!("result for '{}': {}", param, result);
+        }
+    }
 
     Ok(())
 }

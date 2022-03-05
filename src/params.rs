@@ -1,4 +1,4 @@
-use unicorn::RegisterX86;
+use unicorn_engine::RegisterX86;
 
 #[derive(Debug, Clone)]
 pub enum Parameter<'a> {

@@ -29,28 +29,28 @@ use memflow::prelude::v1::*;
 use reflow::prelude::v1::{Result, *};
 
 fn main() -> Result<()> {
-    let matches = App::new("integer result example")
+    let matches = Command::new("integer result example")
         .version(crate_version!())
         .author(crate_authors!())
-        .arg(Arg::with_name("verbose").short("v").multiple(true))
+        .arg(Arg::new("verbose").short('v').multiple_occurrences(true))
         .arg(
-            Arg::with_name("connector")
+            Arg::new("connector")
                 .long("connector")
-                .short("c")
+                .short('c')
                 .takes_value(true)
                 .required(true),
         )
         .arg(
-            Arg::with_name("args")
+            Arg::new("args")
                 .long("args")
-                .short("a")
+                .short('a')
                 .takes_value(true)
                 .default_value(""),
         )
         .arg(
-            Arg::with_name("output")
+            Arg::new("output")
                 .long("output")
-                .short("o")
+                .short('o')
                 .takes_value(true),
         )
         .get_matches();
@@ -63,18 +63,20 @@ fn main() -> Result<()> {
         4 => Level::Trace,
         _ => Level::Trace,
     };
-
-    simple_logger::SimpleLogger::new()
-        .with_level(level.to_level_filter())
-        .init()
-        .unwrap();
+    simplelog::TermLogger::init(
+        level.to_level_filter(),
+        simplelog::Config::default(),
+        simplelog::TerminalMode::Stdout,
+        simplelog::ColorChoice::Auto,
+    )
+    .unwrap();
 
     // build connector + os
     let inventory = Inventory::scan();
     let os = inventory
         .builder()
         .connector(matches.value_of("connector").unwrap())
-        .args(Args::parse(matches.value_of("args").unwrap()).expect("unable to parse args"))
+        .args(str::parse(matches.value_of("args").unwrap()).expect("unable to parse args"))
         .os("win32")
         .build()
         .expect("unable to instantiate connector / os");
@@ -82,19 +84,17 @@ fn main() -> Result<()> {
     let mut process = os.into_process_by_name("ConsoleApplication1.exe").unwrap();
     let module = process.module_by_name("ConsoleApplication1.exe").unwrap();
 
-    let mut execution = new_oven(&mut process)?;
-
-    let result = execution
+    let arch = process.info().proc_arch;
+    let mut execution = Oven::new(arch, &mut process).expect("unable to create oven");
+    execution
         .stack(Stack::new().ret_addr(0x1234u64))?
         .entry_point(module.base + 0x110e1)?
         .reflow()?;
 
-    info!(
-        "result: {}",
-        result
-            .reg_read_u64(RegisterX86::EAX)
-            .expect("unable to read register") as i32
-    );
+    let result = execution
+        .reg_read_u64(RegisterX86::EAX)
+        .expect("unable to read register") as i32;
+    info!("result: {}", result);
 
     Ok(())
 }

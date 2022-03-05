@@ -7,29 +7,30 @@ use memflow::prelude::v1::*;
 use reflow::prelude::v1::{Result, *};
 
 fn main() -> Result<()> {
-    let matches = App::new("createinterface example")
+    let matches = Command::new("createinterface example")
         .version(crate_version!())
         .author(crate_authors!())
-        .arg(Arg::with_name("verbose").short("v").multiple(true))
+        .arg(Arg::new("verbose").short('v').multiple_occurrences(true))
         .arg(
-            Arg::with_name("connector")
+            Arg::new("connector")
                 .long("connector")
-                .short("c")
+                .short('c')
                 .takes_value(true)
                 .required(true),
         )
         .arg(
-            Arg::with_name("args")
+            Arg::new("args")
                 .long("args")
-                .short("a")
+                .short('a')
                 .takes_value(true)
                 .default_value(""),
         )
         .arg(
-            Arg::with_name("output")
-                .long("output")
-                .short("o")
-                .takes_value(true),
+            Arg::new("param")
+                .long("param")
+                .short('p')
+                .takes_value(true)
+                .required(false),
         )
         .get_matches();
 
@@ -41,18 +42,20 @@ fn main() -> Result<()> {
         4 => Level::Trace,
         _ => Level::Trace,
     };
-
-    simple_logger::SimpleLogger::new()
-        .with_level(level.to_level_filter())
-        .init()
-        .unwrap();
+    simplelog::TermLogger::init(
+        level.to_level_filter(),
+        simplelog::Config::default(),
+        simplelog::TerminalMode::Stdout,
+        simplelog::ColorChoice::Auto,
+    )
+    .unwrap();
 
     // build connector + os
     let inventory = Inventory::scan();
     let os = inventory
         .builder()
         .connector(matches.value_of("connector").unwrap())
-        .args(Args::parse(matches.value_of("args").unwrap()).expect("unable to parse args"))
+        .args(str::parse(matches.value_of("args").unwrap()).expect("unable to parse args"))
         .os("win32")
         .build()
         .expect("unable to instantiate connector / os");
@@ -68,20 +71,18 @@ fn main() -> Result<()> {
         .module_export_by_name(&module, "CreateInterface")
         .expect("unable to find CreateInterface export");
 
-    let mut execution = new_oven(&mut process)?;
-
-    let result = execution
+    let arch = process.info().proc_arch;
+    let mut execution = Oven::new(arch, &mut process).expect("unable to create oven");
+    execution
         .stack(Stack::new().ret_addr(0x1234u64))?
         .params(Parameters::new().push_u32(0).push_str("VEngineClient014"))?
         .entry_point(module.base + create_interface.offset)?
         .reflow()?;
 
-    info!(
-        "result: {:x}",
-        result
-            .reg_read_u64(RegisterX86::EAX)
-            .expect("unable to read register") as i32
-    );
+    let result = execution
+        .reg_read_u64(RegisterX86::EAX)
+        .expect("unable to read register") as i32;
+    info!("result: {:x}", result);
 
     Ok(())
 }
