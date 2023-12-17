@@ -5,16 +5,23 @@ authors = ["ko1N <ko1N1337@gmail.com>", "Aurimas Blažulionis <0x60@pm.me>"]
 edition = "2018"
 
 [dependencies]
-memflow = { version = "^0.2.0-beta", features = ["plugins"] }
-log = "^0.4.14"
-unicorn-engine = { git = "https://github.com/unicorn-engine/unicorn", branch = "master" } # TODO: update when 2.0.0 is officially out
-capstone = "0.10.0"
-dataview = "0.1"
+memflow = { version = "=0.2.0-beta11", features = ["plugins"] }
+log = "0.4"
+unicorn-engine = "2.0"
+capstone = "0.11"
 
 [dev-dependencies]
-simplelog = "^0.11.1"
-clap = { version = "3.1", features = ["cargo"] }
+simplelog = "0.12"
+clap = { version = "4.4", features = ["cargo"] }
+
+[[example]]
+name = "createinterface"
+path = "examples/createinterface.rs"
 
 [[example]]
 name = "intresult"
 path = "examples/intresult.rs"
+
+[[example]]
+name = "stringarg"
+path = "examples/stringarg.rs"

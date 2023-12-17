@@ -47,6 +47,7 @@ impl<'a, T: 'a + MemoryView> Oven<'a, T> {
         .install_hooks()
     }
 
+    #[allow(clippy::unnecessary_cast)]
     pub fn stack(&mut self, stack: Stack) -> Result<&mut Self> {
         self.data_base = self.arch.max_writable_addr() - DATA_SIZE as u64 + 1;
 

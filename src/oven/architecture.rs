@@ -54,6 +54,7 @@ impl OvenArchitecture {
         }
     }
 
+    #[allow(clippy::unnecessary_cast)]
     pub fn max_writable_addr(&self) -> u64 {
         match self.ident {
             ArchitectureIdent::X86(32, _) => u32::MAX as u64 - size::mb(1) as u64,

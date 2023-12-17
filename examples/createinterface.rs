@@ -10,31 +10,31 @@ fn main() -> Result<()> {
     let matches = Command::new("createinterface example")
         .version(crate_version!())
         .author(crate_authors!())
-        .arg(Arg::new("verbose").short('v').multiple_occurrences(true))
+        .arg(Arg::new("verbose").short('v').action(ArgAction::Count))
         .arg(
             Arg::new("connector")
                 .long("connector")
                 .short('c')
-                .takes_value(true)
+                .action(ArgAction::Set)
                 .required(true),
         )
         .arg(
             Arg::new("args")
                 .long("args")
                 .short('a')
-                .takes_value(true)
+                .action(ArgAction::Set)
                 .default_value(""),
         )
         .arg(
             Arg::new("param")
                 .long("param")
                 .short('p')
-                .takes_value(true)
+                .action(ArgAction::Set)
                 .required(false),
         )
         .get_matches();
 
-    let level = match matches.occurrences_of("verbose") {
+    let level = match matches.get_count("verbose") {
         0 => Level::Error,
         1 => Level::Warn,
         2 => Level::Info,
@@ -54,8 +54,14 @@ fn main() -> Result<()> {
     let inventory = Inventory::scan();
     let os = inventory
         .builder()
-        .connector(matches.value_of("connector").unwrap())
-        .args(str::parse(matches.value_of("args").unwrap()).expect("unable to parse args"))
+        .connector(matches.get_one::<String>("connector").unwrap())
+        .args(
+            matches
+                .get_one::<String>("args")
+                .unwrap()
+                .parse()
+                .expect("unable to parse args"),
+        )
         .os("win32")
         .build()
         .expect("unable to instantiate connector / os");

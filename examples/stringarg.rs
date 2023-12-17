@@ -44,31 +44,31 @@ fn main() -> Result<()> {
     let matches = Command::new("string argument example")
         .version(crate_version!())
         .author(crate_authors!())
-        .arg(Arg::new("verbose").short('v').multiple_occurrences(true))
+        .arg(Arg::new("verbose").short('v').action(ArgAction::Count))
         .arg(
             Arg::new("connector")
                 .long("connector")
                 .short('c')
-                .takes_value(true)
+                .action(ArgAction::Set)
                 .required(true),
         )
         .arg(
             Arg::new("args")
                 .long("args")
                 .short('a')
-                .takes_value(true)
+                .action(ArgAction::Set)
                 .default_value(""),
         )
         .arg(
             Arg::new("param")
                 .long("param")
                 .short('p')
-                .takes_value(true)
+                .action(ArgAction::Set)
                 .required(false),
         )
         .get_matches();
 
-    let level = match matches.occurrences_of("verbose") {
+    let level = match matches.get_count("verbose") {
         0 => Level::Error,
         1 => Level::Warn,
         2 => Level::Info,
@@ -88,8 +88,14 @@ fn main() -> Result<()> {
     let inventory = Inventory::scan();
     let os = inventory
         .builder()
-        .connector(matches.value_of("connector").unwrap())
-        .args(str::parse(matches.value_of("args").unwrap()).expect("unable to parse args"))
+        .connector(matches.get_one::<String>("connector").unwrap())
+        .args(
+            matches
+                .get_one::<String>("args")
+                .unwrap()
+                .parse()
+                .expect("unable to parse args"),
+        )
         .os("win32")
         .build()
         .expect("unable to instantiate connector / os");
@@ -103,9 +109,8 @@ fn main() -> Result<()> {
         .stack(Stack::new().ret_addr(0xDEADBEEFu64))?
         .entry_point(module.base + 0x112f3)?;
 
-    if matches.is_present("param") {
+    if let Some(param) = matches.get_one::<String>("param") {
         // just execute the oven with the 'param' argument
-        let param = matches.value_of("param").unwrap_or_default();
         execution
             .params(Parameters::new().reg_str(RegisterX86::RCX, param))?
             .reflow()
