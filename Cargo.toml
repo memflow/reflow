@@ -1,11 +1,11 @@
 [package]
 name = "reflow"
-version = "0.2.0-beta1"
+version = "0.2.0"
 authors = ["ko1N <ko1N1337@gmail.com>", "Aurimas Blažulionis <0x60@pm.me>"]
 edition = "2018"
 
 [dependencies]
-memflow = { version = "=0.2.0-beta11", features = ["plugins"] }
+memflow = { version = "0.2", features = ["plugins"] }
 log = "0.4"
 unicorn-engine = "2.0"
 capstone = "0.11"
